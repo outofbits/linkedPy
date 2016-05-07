@@ -4,13 +4,13 @@ import grammar.keyword as keyword
 
 import re
 import ply.lex as lex
-from .exception import SyntaxError, IndentError
+from .exception import SyntaxError, IndentationError
 from ply.lex import TOKEN, LexToken
 
 __author__ = 'Kevin Haller'
 
 
-def group(*choices:[str]) -> str: return r'(' + '|'.join(choices) + ')'
+def group(*choices: [str]) -> str: return r'(' + '|'.join(choices) + ')'
 
 
 class Tokenizer:
@@ -38,13 +38,15 @@ class Tokenizer:
     # String formats
     apostrophe_string = r'\'[^\'\\]*(\\.[^\'\\]*)*\''
     quote_string = r'"[^"\\]*(\\.[^"\\]*)*"'
-    string = group(apostrophe_string, quote_string)
+    apostrophe3_string = r'\'\'\'[^\'\\]*((\\.|\'(?!\'\'))[^\'\\]*)*\'\'\''
+    quote3_string = r'"""[^"\\]*((\\.|"(?!""))[^"\\]*)*"""'
+    string = group(apostrophe3_string, quote3_string, apostrophe_string, quote_string)
 
     literals = (':', '.', ',', ';',
                 '(', ')', '[', ']', '{', '}',
-                '+', '-', '*', '/','%',
-                '&','|','~', '^',
-                '<','>',
+                '+', '-', '*', '/', '%',
+                '&', '|', '~', '^',
+                '<', '>', '=',
                 '@'
                 )
 
@@ -79,6 +81,7 @@ class Tokenizer:
               'ELLIPSIS',
               ) + keyword.kwlist
 
+    t_STRING = string
     t_ATEQUAL = r'@='
     t_RIGHTARROW = r'->'
     t_ELLIPSIS = r'\.\.\.'
@@ -132,16 +135,12 @@ class Tokenizer:
         t.value = int(t.value)
         return t
 
-    @TOKEN(string)
-    def t_STRING(self, t: LexToken) -> LexToken:
-        return t
-
     @TOKEN(newline)
     def t_NEWLINE(self, t: LexToken) -> LexToken:
         t.lexer.lineno += 1
         return t
 
-    def t_error(self, t:LexToken) -> LexToken:
+    def t_error(self, t: LexToken) -> LexToken:
         raise SyntaxError(t.value, t.lineno, t.lexpos, err_msg='invalid syntax')
 
     def tokenize(self, string: str) -> [()]:
@@ -150,7 +149,7 @@ class Tokenizer:
         :param string: the string, which shall be broken into linkedPy token.
         :return: a iterator over linkedPy tokens from beginning to the end of the file.
         """
-        self._last_indent_space = 0     # Space counter for indentation tokens.
+        self._last_indent_space = 0  # Space counter for indentation tokens.
         self.lexer.input(string)
         for tok in iter(lex.token, None):
             print('%s, %s' % (repr(tok.type), repr(tok.value)))

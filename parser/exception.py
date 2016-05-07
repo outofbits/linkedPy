@@ -1,5 +1,4 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
-import abc
 
 
 class ParserError(Exception):
@@ -23,7 +22,7 @@ class ParserError(Exception):
                                                     self.err_msg)
 
 
-class IndentError(ParserError):
+class IndentationError(ParserError):
     """ This exception is intended to be raised, when an indention error has been detected. """
     pass
 
