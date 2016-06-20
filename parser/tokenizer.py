@@ -4,6 +4,7 @@ import grammar.keyword as keyword
 
 import re
 import ply.lex as lex
+from .lexer_wrapper import LexerIndentationWrapper
 from .exception import SyntaxError, IndentationError
 from ply.lex import TOKEN, LexToken
 
@@ -15,20 +16,20 @@ def group(*choices: [str]) -> str: return r'(' + '|'.join(choices) + ')'
 
 class Tokenizer:
     """
-    This class represents a tokenizer, which reads in a string and breaks it into
+    This class represents a tokenizer that reads in a string and breaks it into
     linkedPy tokens. linkedPy inherits token from Python3 and adds new ones for
     handling linked data. Tokens are tuples of the form (token type, token value).
     """
 
     def __init__(self):
-        self._last_indent_space = 0  # Space counter for indentation tokens.
-        self.lexer = lex.lex(object=self, reflags=re.MULTILINE)
+        self.lexer = lex.lex(module=self, reflags=re.MULTILINE)
 
     comment = r'\#[^\r\n]*'
-    newline = r'\n'
+    newline = r'\n+'
     space = r'[ \t]+'
     # Names
     name = r'[a-zA-Z_]\w*'
+    iriname = r'<([^<>"{}|^`\\])*>'
     # Number formats
     binnumber = r'0[bB][01]*'
     hexnumber = r'0[xX][\da-fA-F]*[lL]?'
@@ -53,6 +54,7 @@ class Tokenizer:
     tokens = ('INDENT',
               'DEDENT',
               'NAME',
+              'IRINAME',
               'NUMBER',
               'STRING',
               'NEWLINE',
@@ -81,7 +83,9 @@ class Tokenizer:
               'ELLIPSIS',
               ) + keyword.kwlist
 
+    t_ignore = ' \t'
     t_STRING = string
+    t_IRINAME = iriname
     t_ATEQUAL = r'@='
     t_RIGHTARROW = r'->'
     t_ELLIPSIS = r'\.\.\.'
@@ -95,8 +99,8 @@ class Tokenizer:
     t_PLUSEQUAL = r'\+='
     t_TIMESEQUAL = r'\*='
     t_POWEREQUAL = r'\*\*='
-    t_DIVIDEQUAL = r'\\='
-    t_INTDIVIDEQUAL = r'\\\\='
+    t_DIVIDEQUAL = r'/='
+    t_INTDIVIDEQUAL = r'//='
     t_MODULOEQUAL = r'%='
     t_XOREQUAL = r'\^='
     t_LANDEQUAL = r'&='
@@ -106,20 +110,6 @@ class Tokenizer:
     t_RSHIFT = r'>>'
     t_RSHIFTEQUAL = r'>>='
 
-    @TOKEN(space)
-    def t_SPACE(self, t: LexToken) -> LexToken:
-        space_counter = 0
-        for c in reversed(t.lexer.lexdata[:t.lexer.lexpos]):
-            if c == '\n':
-                break
-            elif c not in ['\t', ' ']:
-                return None
-            else:
-                space_counter += 1 if c == ' ' else 4
-        t.value = space_counter if space_counter >= self._last_indent_space else self._last_indent_space - space_counter
-        t.type = 'INDENT' if space_counter >= self._last_indent_space else 'DEDENT'
-        self._last_indent_space = space_counter
-        return t
 
     @TOKEN(comment)
     def t_COMMENT(self, t: LexToken) -> None:
@@ -137,11 +127,18 @@ class Tokenizer:
 
     @TOKEN(newline)
     def t_NEWLINE(self, t: LexToken) -> LexToken:
-        t.lexer.lineno += 1
+        t.lexer.lineno += len(t.value)
         return t
 
     def t_error(self, t: LexToken) -> LexToken:
         raise SyntaxError(t.value, t.lineno, t.lexpos, err_msg='invalid syntax')
+
+    def indentation_lexer(self) -> LexerIndentationWrapper:
+        """
+        Gets a lexer that includes the indentation token as well as checks for proper indention.
+        :return: a lexer that includes the indentation token as well as checks for proper indention.
+        """
+        return LexerIndentationWrapper(self.lexer)
 
     def tokenize(self, string: str) -> [()]:
         """ Analyses the given string and breaks it into
@@ -151,5 +148,5 @@ class Tokenizer:
         """
         self._last_indent_space = 0  # Space counter for indentation tokens.
         self.lexer.input(string)
-        for tok in iter(lex.token, None):
+        for tok in iter(self.indentation_lexer().token, None):
             print('%s, %s' % (repr(tok.type), repr(tok.value)))
