@@ -3,6 +3,7 @@
 import copy
 from collections import deque
 from ply.lex import LexToken, Lexer
+from .exception import IndentationError
 
 
 class LexerIndentationWrapper(object):
@@ -98,7 +99,8 @@ class LexerIndentationWrapper(object):
                     self._wrap_lex_ind_queue.pop()
                     self._wrap_lex_token_queue.append(self._change_token(token, 'DEDENT', self._wrap_lex_ind_queue[-1]))
                 if indent_c != self._wrap_lex_ind_queue[-1]:
-                    raise IndentationError("Indentation error.")
+                    raise IndentationError(err_msg="Indentation error.", lineno=token.lineno, lexpos=token.lexpos,
+                                           lexdata=token.lexer.lexdata)
         return token
 
     def __setattr__(self, key, value):
