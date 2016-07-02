@@ -1,4 +1,11 @@
-Hai. This is linkedPy version 3.5 (dev)
-=======================================
+# linkedPy
+-----------
 
-Copyright (C) 2016 Kevin Haller
+LinkedPy is a subset of the programming language Python3 that implements addtional language elements for handling
+Linked Data. 
+
+## Interpreter
+A given program code is analysed lexically and syntically in one pass, where the result is an abstract syntax tree
+representing the structure of the program. For executing the program this abstract syntax tree will be traversed 
+recursively given an environment. The environment contains the current status of the program inclduing all defined 
+variable with their values, defined functions and prefixes.
