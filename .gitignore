@@ -100,3 +100,4 @@ ENV/
 ### PLY
 parsetab.py
 parser.out
+lextab.py
