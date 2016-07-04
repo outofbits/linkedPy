@@ -110,7 +110,7 @@ class LexerIndentationWrapper(object):
             super(LexerIndentationWrapper, self).__setattr__(key, value)
 
     def __getattr__(self, name):
-        if name.startswith('lex'):
+        if name.startswith('lex') or name == 'lineno':
             return getattr(self.wrapped_lexer, name)
         else:
             raise AttributeError('Class %s has no attribute %s.' % (self.__class__.__name__, name))
