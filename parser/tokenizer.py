@@ -41,18 +41,7 @@ class Tokenizer:
     newline = r'\n+'
     # Names
     name = r'[a-zA-Z_]\w*'
-    # IRI
-    iri_scheme = r'([^\W\d_<>\s]([^\W\s<>]|[+.-])*)'
-    iri_username = r'([^:@/<>\s]+(:[^:@/<>\s]+)?@)'
-    iri_segment = r'([^\W\d_<>\s](([^\W<>\s])*[^\W<>\s])?)'
-    iri_domain = concat(iri_segment, r'(\.', iri_segment, r')*')
-    iri_host = concat(iri_domain)
-    iri_port = r'(:[\d]{1,5})'
-    iri_path = r'((/([^?;\W\#<>\s]|[+.-])*)*)'
-    iri_query = r'(\?([^\W\#;<>\s]|[+.-])*)'
-    iri_anchor = r'(\#([^\W<>\s]|[+.-])*)'
-    iri = concat(optional(concat(iri_scheme, r'://')), iri_host, optional(iri_port),
-                 optional(iri_path), optional(iri_query), optional(iri_anchor))
+    iri = concat(r'<(?P<prefix_name>(', name, ')(?P<prefix_ind>:))?(?P<iri_value>[^<>"{}\s|^`\\\\]*)>')
     # Number formats
     binnumber = r'0[bB][01]*'
     hexnumber = r'0[xX][\da-fA-F]*[lL]?'
@@ -60,12 +49,12 @@ class Tokenizer:
     decnumber = r'[1-9]\d*[lL]?'
     number = group(binnumber, hexnumber, octnumber, decnumber)
     # String formats
-    apostrophe_string = r'\'([^\'\\]*(\\.[^\'\\]*)*)\''
-    quote_string = r'"([^"\\]*(\\.[^"\\]*)*)"'
-    apostrophe3_string = r'\'\'\'([^\'\\]*((\\.|\'(?!\'\'))[^\'\\]*)*)\'\'\''
-    quote3_string = r'"""([^"\\]*((\\.|"(?!""))[^"\\]*)*)"""'
+    apostrophe_string = r'\'(?P<apo_str>[^\'\\]*(\\.[^\'\\]*)*)\''
+    quote_string = r'"(?P<quote_str>[^"\\]*(\\.[^"\\]*)*)"'
+    apostrophe3_string = r'\'\'\'(?P<apo3_str>[^\'\\]*((\\.|\'(?!\'\'))[^\'\\]*)*)\'\'\''
+    quote3_string = r'"""(?P<quote3_str>[^"\\]*((\\.|"(?!""))[^"\\]*)*)"""'
     string = group(apostrophe3_string, quote3_string, apostrophe_string, quote_string)
-    string_group_enc = (8, 10, 2, 5)
+    string_group_enc = ('apo_str', 'quote_str', 'apo3_str', 'quote3_str')
     # Braces
     braces_open = r'[\(\[{]'
     braces_close = r'[\)\]}]'
@@ -163,10 +152,15 @@ class Tokenizer:
                 break
         return t
 
+    @TOKEN(name)
+    def t_ANY_NAME(self, t: LexToken) -> LexToken:
+        t.type = 'NAME' if not keyword.isKeyword(t.value) else t.value
+        return t
+
     @TOKEN(iri)
     def t_ANY_IRI(self, t: LexToken) -> LexToken:
-        if self._is_name(t.value):
-            t.type = 'NAME' if not keyword.isKeyword(t.value) else t.value
+        lexmatch = t.lexer.lexmatch
+        t.value = (lexmatch.group('prefix_name'), lexmatch.group('prefix_ind'), lexmatch.group('iri_value'))
         return t
 
     @TOKEN(number)

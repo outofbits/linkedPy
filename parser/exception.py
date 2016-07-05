@@ -1,9 +1,9 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
 
-class ParsersError(Exception):
+class ParserErrors(Exception):
     def __init__(self, error_msg, parser_errors=None):
-        super(ParsersError, self).__init__()
+        super(ParserErrors, self).__init__()
         self.error_msg = error_msg
         self.parser_errors = parser_errors
 
@@ -12,10 +12,19 @@ class ParsersError(Exception):
 
 
 class ParserError(Exception):
-    """ This exception is intended to be raised, when an error . """
+    """ This exception is intended to be raised, when an error is detected during the parsing process. """
 
-    def __init__(self, err_msg: str):
-        super(ParserError, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(ParserError, self).__init__(*args, **kwargs)
+
+
+class EOFParserError(ParserError):
+    """
+    This exception is intended to be raised, when an error is detected at the end of the file during the parsing.
+    """
+
+    def __init__(self, err_msg: str, *args, **kwargs):
+        super(EOFParserError, self).__init__(*args, **kwargs)
         self.err_msg = err_msg
 
     def message(self):
@@ -30,7 +39,7 @@ class IndentationError(ParserError):
 class SyntaxError(ParserError):
     """ This exception is intended to be raised, when a syntax exception has been detected. """
 
-    def __init__(self, err_msg: str, lexdata: str, lineno: int, lexpos: int, origin=None):
+    def __init__(self, err_msg: str, lexdata: str, lineno: int, lexpos: int, origin: str = None, *args, **kwargs):
         """ Initialize this ParserException with the given parameters.
 
         :param err_msg: the error message of the parser.
@@ -39,8 +48,9 @@ class SyntaxError(ParserError):
         :param linepos: the line position, where the parser exception was detected.
         :param origin: the origin of the program code like a file name.
         """
-        super(SyntaxError, self).__init__(err_msg)
+        super(SyntaxError, self).__init__(*args, **kwargs)
         self.origin = origin
+        self.err_msg = err_msg
         self.lineno = lineno
         self.linepos, self.line = SyntaxError._get_line(lexdata, lexpos)
 

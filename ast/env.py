@@ -248,7 +248,7 @@ class ProgramStack(object):
         self.prev = program_stack
         self.peephole = peephole
 
-    def get_stack(self, max_len=10) -> [ProgramPeephole]:
+    def get_stack(self, max_len: int = 10) -> [ProgramPeephole]:
         """
         Goes back in the given program stack and returns all entries as a list, where the most recent entry is at the
         beginning.

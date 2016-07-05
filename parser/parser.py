@@ -2,8 +2,9 @@
 
 import ply.yacc as yacc
 from .tokenizer import Tokenizer
-from .exception import SyntaxError, ParserError, ParsersError
+from .exception import SyntaxError, ParserErrors, EOFParserError
 from ast.ast import *
+from ast.env import ProgramContainer, ProgramPeephole
 
 
 class Parser:
@@ -14,16 +15,17 @@ class Parser:
     tokens = Tokenizer.tokens
     start = 'program'
 
-    def __init__(self, program_origin=None):
+    def __init__(self, program_container: ProgramContainer):
         self.parser = yacc.yacc(module=self, optimize=0, debug=True)
-        self.program_origin = program_origin
+        self.program_container = program_container
         self.syntax_error_list = list()
 
     precedence = (
+        ('right', 'ConditionalExpression'),
         ('left', 'or'),
         ('left', 'and'),
         ('right', 'not'),
-        ('left', 'EQEQUAL', 'NOTEQUAL', '<', '>', 'LESSEQUAL', 'GREATEREQUAL', 'is', 'in'),
+        ('left', 'EQEQUAL', 'NOTEQUAL', '<', '>', 'LESSEQUAL', 'GREATEREQUAL', 'is', 'in', 'NotIn', 'IsNot'),
         ('left', '|'),
         ('left', '^'),
         ('left', '&'),
@@ -32,6 +34,7 @@ class Parser:
         ('left', '*', '/', 'FLOORDIVIDE', '%'),
         ('right', 'UPLUS', 'UMINUS', '~'),
         ('left', 'POWER'),
+        ('left', 'AtomCall', 'Subscript', 'MethodCall')
     )
 
     binary_op_magic_methods_dic = {
@@ -77,23 +80,24 @@ class Parser:
         '~': '__invert__'
     }
 
+    def _create_peephole(self, start_line_no, end_line_no):
+        return ProgramPeephole(program_container=self.program_container, start_line_no=start_line_no,
+                               end_line_no=end_line_no)
+
     def p_program(self, p):
         """
-        program : file_input
+        program : empty
+                | file_input
         """
         p[0] = p[1] if p != 'empty' else None
 
+    # # File input
+
     def p_file_input(self, p):
         """
-        file_input : file_body
-        """
-        p[0] = p[1]
-
-    def p_file_body(self, p):
-        """
-        file_body : file_header
-                  | file_body statement
-                  | file_body NEWLINE
+        file_input : statement
+                   | file_input statement
+                   | file_input NEWLINE
         """
         if len(p) == 2:
             p[0] = StatementsBlockNode([p[1]])
@@ -102,39 +106,13 @@ class Parser:
                 p[1].append_statement(p[2])
             p[0] = p[1]
 
-    def p_file_header(self, p):
-        """
-        file_header : empty
-                    | file_header NEWLINE
-                    | file_header prefix_statement
-        """
-        if len(p) == 2:
-            p[0] = PrefixNodeList()
-        else:
-            if p[2] != '\n':
-                p[1].append_prefix(p[2])
-            p[0] = p[1]
-
-    # ------------------------------------------------------------------------
-    #                                Prefix
-    # ------------------------------------------------------------------------
-
-    def p_prefix_statement(self, p):
-        """
-         prefix_statement : '@' base ':' '<' iri '>' '.'
-                          | '@' prefix NAME ':' '<' iri '>' '.'
-        """
-        p[0] = PrefixNode(name='base', iri=p[5]) if len(p) == 8 else PrefixNode(name=p[3], iri=p[6])
-
-    # ------------------------------------------------------------------------
-    #                          Function definition
-    # ------------------------------------------------------------------------
+    # # Function definition
 
     def p_function_definition(self, p):
         """
         function_definition : def NAME function_parameters ':' suite
         """
-        p[0] = FunctionNode(p[2], p[5], p[3])
+        p[0] = FunctionNode(p[2], p[5], p[3], peephole=self._create_peephole(p.lineno(1), p.lineno(5)))
 
     def p_function_parameters(self, p):
         """
@@ -163,9 +141,11 @@ class Parser:
                   | NAME ':' test parameter_default
         """
         if len(p) == 3:
-            p[0] = ParameterNode(parameter_name=p[1], default_expression=p[2])
+            p[0] = ParameterNode(parameter_name=p[1], default_expression=p[2],
+                                 peephole=self._create_peephole(p.lineno(1), p.lineno(2)))
         else:
-            p[0] = ParameterNode(parameter_name=p[1], default_expression=p[4])
+            p[0] = ParameterNode(parameter_name=p[1], default_expression=p[4],
+                                 peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
 
     def p_parameter_test(self, p):
         """
@@ -174,29 +154,7 @@ class Parser:
         """
         p[0] = p[2] if len(p) == 3 else None
 
-    # ------------------------------------------------------------------------
-    #                          Statements
-    # ------------------------------------------------------------------------
-
-    def p_suite(self, p):
-        """
-        suite : simple_statement
-              | NEWLINE INDENT statement_list DEDENT
-        """
-        if len(p) == 2:
-            p[0] = p[1]
-        else:
-            p[0] = p[3]
-
-    def p_statement_list(self, p):
-        """
-        statement_list : statement
-                       | statement_list statement
-        """
-        if len(p) == 2:
-            p[0] = p[1]
-        else:
-            p[0] = StatementsBlockNode.merge(p[1], p[2])
+    # # Statements
 
     def p_statement(self, p):
         """
@@ -205,6 +163,8 @@ class Parser:
                   | compound_statement
         """
         p[0] = p[1]
+
+    # ## Simple statements
 
     def p_simple_statement(self, p):
         """
@@ -218,57 +178,13 @@ class Parser:
 
     def p_single_statement(self, p):
         """
-        single_statement : expr
+        single_statement : test
                          | assign_statement
                          | flow_statement
                          | pass_statement
-                         | print_statement
+                         | prefix_statement
         """
         p[0] = p[1]
-
-    def p_compound_statement(self, p):
-        """
-        compound_statement : function_definition
-                           | if_statement
-                           | while_statement
-                           | for_statement
-        """
-        p[0] = StatementsBlockNode([p[1]])
-
-    def p_if_statement(self, p):
-        """
-        if_statement : if test ':' suite elif_statement
-        """
-        p[0] = IfOperationNode(p[2], p[4], p[5])
-
-    def p_elif_statement(self, p):
-        """
-        elif_statement : empty
-                       | else ':' suite
-                       | elif test ':' suite elif_statement
-        """
-        if len(p) == 2:
-            p[0] = None
-        elif len(p) == 4:
-            p[0] = p[3]
-        else:
-            p[0] = IfOperationNode(p[2], p[4], p[5])
-
-    def p_while_statement(self, p):
-        """
-        while_statement : while test ':' suite
-                        | while test ':' suite else ':' suite
-        """
-        if len(p) == 5:
-            p[0] = WhileOperationNode(p[2], p[4])
-        else:
-            p[0] = WhileOperationNode(p[2], p[4], p[7])
-
-    def p_for_statement(self, p):
-        """
-        for_statement : for NAME in test ':' suite
-        """
-        p[0] = ForOperationNode(variable_name=p[2], iterable_node=p[4], trunk=p[6])
 
     def p_assign_statement(self, p):
         """
@@ -287,102 +203,140 @@ class Parser:
                          | test FLOORDIVIDEQUAL test
         """
         if p[2] == '=':
-            p[0] = VariableAssignmentNode(p[1], p[3])
+            p[0] = VariableAssignmentNode(p[1], p[3], peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
         else:
             p[0] = VariableAssignmentNode(p[1], BinOperationNode(op_name=p[2],
                                                                  magic_method=self.assign_binop_magic_methods_dic[p[2]],
-                                                                 left=p[1],
-                                                                 right=p[3]))
-
-    def p_print_statement(self, p):
-        """
-        print_statement : print '(' test ')'
-        """
-        p[0] = PrintNode(p[3])
+                                                                 left=p[1], right=p[3]),
+                                          peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
 
     def p_pass_statement(self, p):
         """
         pass_statement : pass
         """
-        p[0] = PassNode()
+        p[0] = PassNode(peephole=self._create_peephole(p.lineno(1), p.lineno(1)))
 
     def p_flow_statement(self, p):
         """
-        flow_statement : break_statement
-                       | continue_statement
+        flow_statement : continue_statement
+                       | break_statement
                        | return_statement
         """
         p[0] = p[1]
-
-    def p_break_statement(self, p):
-        """
-        break_statement : break
-        """
-        pass
 
     def p_continue_statement(self, p):
         """
         continue_statement : continue
         """
-        pass
+        p[0] = ContinueNode(peephole=self._create_peephole(p.lineno(1), p.lineno(1)))
+
+    def p_break_statement(self, p):
+        """
+        break_statement : break
+        """
+        p[0] = BreakNode(peephole=self._create_peephole(p.lineno(1), p.lineno(1)))
 
     def p_return_statement(self, p):
         """
-        return_statement : return
-                         | return test
-        """
-        p[0] = ReturnNode() if len(p) == 2 else ReturnNode(return_expr=p[2])
+         return_statement : return
+                          | return test
+         """
+        p[0] = ReturnNode(peephole=self._create_peephole(p.lineno(1), p.lineno(1))) if len(p) == 2 else ReturnNode(
+            return_expr=p[2], peephole=self._create_peephole(p.lineno(1), p.lineno(2)))
 
-    # -----------------------------------------------------------------------
-    #                            Expressions & Tests
-    # -----------------------------------------------------------------------
+    # ### Linked Data prefix statement
 
-    def p_test(self, p):
+    def p_prefix_statement(self, p):
         """
-        test : bool_test
-             | bool_test if bool_test else test
+         prefix_statement : '@' base IRI '.'
+                          | '@' prefix NAME ':' IRI '.'
+        """
+        if len(p) == 6:
+            p[0] = PrefixNode(name='base', iri=p[3][2], peephole=self._create_peephole(p.lineno(1), p.lineno(5)))
+        else:
+            p[0] = PrefixNode(name=p[3], iri=p[5][2], peephole=self._create_peephole(p.lineno(1), p.lineno(6)))
+
+    # ## Suite
+
+    def p_suite(self, p):
+        """
+        suite : simple_statement NEWLINE
+              | NEWLINE INDENT statement_list DEDENT
         """
         if len(p) == 2:
             p[0] = p[1]
         else:
+            p[0] = p[3]
+
+    def p_statement_list(self, p):
+        """
+        statement_list : statement
+                       | statement_list statement
+        """
+        if len(p) == 2:
+            p[0] = p[1]
+        else:
+            p[0] = StatementsBlockNode.merge(p[1], p[2])
+
+    # ## Compound Statement
+
+    def p_compound_statement(self, p):
+        """
+        compound_statement : function_definition
+                           | if_statement
+                           | while_statement
+                           | for_statement
+        """
+        p[0] = StatementsBlockNode([p[1]])
+
+    def p_if_statement(self, p):
+        """
+        if_statement : if test ':' suite elif_statement
+        """
+        p[0] = IfOperationNode(p[2], p[4], p[5], peephole=self._create_peephole(p.lineno(1), p.lineno(4)))
+
+    def p_elif_statement(self, p):
+        """
+        elif_statement : empty
+                       | else ':' suite
+                       | elif test ':' suite elif_statement
+        """
+        if len(p) == 2:
             p[0] = None
-
-    def p_boolean_test(self, p):
-        """
-        bool_test : not_test
-                  | bool_test or bool_test
-                  | bool_test and bool_test
-        """
-        if len(p) == 2:
-            p[0] = p[1]
+        elif len(p) == 4:
+            p[0] = p[3]
         else:
-            p[0] = ANDOperationNode(p[1], p[3]) if p[2] == 'and' else OROperationNode(p[1], p[3])
+            p[0] = IfOperationNode(p[2], p[4], p[5], peephole=self._create_peephole(p.lineno(1), p.lineno(4)))
 
-    def p_test_not(self, p):
+    def p_while_statement(self, p):
         """
-        not_test : expr
-                 | not not_test
+        while_statement : while test ':' suite
+                        | while test ':' suite else ':' suite
         """
-        if p[1] == 'not':
-            p[0] = NotOperationNode(p[2])
+        if len(p) == 5:
+            p[0] = WhileOperationNode(p[2], p[4], peephole=self._create_peephole(p.lineno(1), p.lineno(4)))
         else:
-            p[0] = p[1]
+            p[0] = WhileOperationNode(p[2], p[4], p[7], peephole=self._create_peephole(p.lineno(1), p.lineno(7)))
 
-    def p_test_list(self, p):
+    def p_for_statement(self, p):
         """
-        test_list : test
-                  | test_list ',' test
+        for_statement : for NAME in test ':' suite
+                      | for NAME in test ':' suite else ':' suite
         """
-        if len(p) == 2:
-            p[0] = TestListNode(p[1])
+        if len(p) == 7:
+            p[0] = ForOperationNode(variable_name=p[2], iterable_node=p[4], trunk=p[6],
+                                    peephole=self._create_peephole(p.lineno(1), p.lineno(6)))
         else:
-            p[1].append_test_node(p[3])
-            p[0] = p[1]
+            p[0] = ForOperationNode(variable_name=p[2], iterable_node=p[4], trunk=p[6], else_branch=p[9],
+                                    peephole=self._create_peephole(p.lineno(1), p.lineno(9)))
+
+    # # Expressions and Tests
+
+    # ## Expressions
 
     def p_expr(self, p):
         """
-        expr : atom_expr
-             | expr_unary
+        expr : expr_unary
              | arithmetic_expr
              | comparison_expr
              | bits_expr
@@ -391,15 +345,16 @@ class Parser:
 
     def p_expr_unary(self, p):
         """
-        expr_unary : '(' expr ')'
+        expr_unary : atom_expr
                    | '+' expr_unary %prec UPLUS
                    | '-' expr_unary %prec UMINUS
                    | '~' expr_unary
         """
-        if p[1] in self.unary_op_magic_methods_dic.keys():
-            p[0] = UnaryOperatorNode(op_name=p[1], magic_method=self.unary_op_magic_methods_dic[p[1]], node=p[2])
+        if len(p) == 2:
+            p[0] = p[1]
         else:
-            p[0] = p[2]
+            p[0] = UnaryOperatorNode(op_name=p[1], magic_method=self.unary_op_magic_methods_dic[p[1]], node=p[2],
+                                     peephole=self._create_peephole(p.lineno(1), p.lineno(2)))
 
     def p_arithmetic_expr(self, p):
         """
@@ -412,7 +367,7 @@ class Parser:
                         | expr POWER expr
         """
         p[0] = BinOperationNode(op_name=p[2], magic_method=self.binary_op_magic_methods_dic[p[2]], left=p[1],
-                                right=p[3])
+                                right=p[3], peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
 
     def p_bits_expr(self, p):
         """
@@ -423,7 +378,7 @@ class Parser:
                   | expr RSHIFT expr
         """
         p[0] = BinOperationNode(op_name=p[2], magic_method=self.binary_op_magic_methods_dic[p[2]], left=p[1],
-                                right=p[3])
+                                right=p[3], peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
 
     def p_comparison_expr(self, p):
         """
@@ -434,46 +389,99 @@ class Parser:
                         | expr LESSEQUAL expr
                         | expr GREATEREQUAL expr
                         | expr in expr
-                        | expr not in expr
+                        | expr not in expr %prec NotIn
                         | expr is expr
-                        | expr is not expr
+                        | expr is not expr %prec IsNot
         """
         if p[2] in self.cmp_magic_methods_dic.keys():
             p[0] = ComparisonOperationNode(op_name=p[2], magic_method=self.cmp_magic_methods_dic[p[2]], left=p[1],
-                                           right=p[3])
+                                           right=p[3], peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
         else:
             p[0] = None
 
-    # -------------------------------------------------------------------
-    #                      Atoms
-    # -------------------------------------------------------------------
+    # ## Tests
+
+    def p_test(self, p):
+        """
+        test : bool_test
+             | bool_test if bool_test else test %prec ConditionalExpression
+        """
+        if len(p) == 2:
+            p[0] = p[1]
+        else:
+            p[0] = None
+
+    def p_test_list(self, p):
+        """
+        test_list : test
+                  | test_list ',' test
+        """
+        if len(p) == 2:
+            p[0] = TestListNode(p[1])
+        else:
+            p[1].append_test_node(p[3])
+            p[0] = p[1]
+
+    def p_boolean_test(self, p):
+        """
+        bool_test : not_test
+                  | bool_test or bool_test
+                  | bool_test and bool_test
+        """
+        if len(p) == 2:
+            p[0] = p[1]
+        elif p[2] == 'and':
+            p[0] = ANDOperationNode(p[1], p[3], peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
+        else:
+            p[0] = OROperationNode(p[1], p[3], peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
+
+    def p_not_test(self, p):
+        """
+        not_test : expr
+                 | not not_test
+        """
+        if p[1] == 'not':
+            p[0] = NotOperationNode(p[2], peephole=self._create_peephole(p.lineno(1), p.lineno(2)))
+        else:
+            p[0] = p[1]
+
+    # # Atom
 
     def p_atom_expr(self, p):
         """
         atom_expr : atom
-                  | '+' atom_expr
-                  | '-' atom_expr
-                  | '~' atom_expr
+                  | atom_call
+                  | atom_subscript
+                  | atom_attr_call
         """
-        if p[1] in self.unary_op_magic_methods_dic.keys():
-            p[0] = UnaryOperatorNode(op_name=p[1], magic_method=self.unary_op_magic_methods_dic[p[1]], node=p[2])
-        else:
-            p[0] = p[1]
+        p[0] = p[1]
 
     def p_atom(self, p):
         """
-        atom : '(' atom ')'
+        atom : '(' expr ')'
              | variable
-             | resource
-             | triple
-             | func_call
-             | subscript_call
-             | const_num
-             | const_bool
-             | str
-             | list_atom
-             | graph_atom
-             | none
+             | const_atom
+        """
+        if len(p) == 4:
+            p[0] = p[2]
+        else:
+            p[0] = p[1]
+
+    def p_variable(self, p):
+        """
+        variable : NAME
+        """
+        p[0] = VariableNode(p[1])
+
+    def p_const_atom(self, p):
+        """
+        const_atom : none
+                   | bool
+                   | number
+                   | str
+                   | resource
+                   | triple
+                   | collection
         """
         p[0] = p[1]
 
@@ -483,47 +491,33 @@ class Parser:
         """
         p[0] = ConstantNode(None)
 
+    def p_const_bool(self, p):
+        """
+        bool : True
+             | False
+        """
+        p[0] = ConstantNode(p[1] == 'True')
+
+    def p_const_number(self, p):
+        """
+        number :  NUMBER
+        """
+        p[0] = ConstantNode(p[1])
+
     def p_str(self, p):
         """
         str : STRING
         """
         p[0] = ConstantNode(p[1])
 
-    def p_const_number(self, p):
-        """
-        const_num :  NUMBER
-        """
-        p[0] = ConstantNode(p[1])
-
-    def p_const_bool(self, p):
-        """
-        const_bool : True
-                   | False
-        """
-        p[0] = ConstantNode(p[1] == 'True')
-
     def p_resource(self, p):
         """
-        resource : '<' '>'
-                 | '<' iri '>'
-                 | '<' ':' iri '>'
-                 | '<' NAME ':' iri '>'
+         resource : IRI
         """
-        if len(p) == 3:
-            p[0] = ResourceNode(iri='')
-        elif len(p) == 4:
-            p[0] = ResourceNode(iri=p[2])
-        elif len(p) == 5:
-            p[0] = ResourceNode(iri=p[3], prefix_name='base')
+        if p[1][1] is not None:
+            p[0] = ResourceNode(iri=p[1][2], prefix_name='base' if p[1][0] is None else p[1][0])
         else:
-            p[0] = ResourceNode(iri=p[4], prefix_name=p[2])
-
-    def p_iri(self, p):
-        """
-        iri : IRI
-            | NAME
-        """
-        p[0] = p[1]
+            p[0] = ResourceNode(iri=p[1][2])
 
     def p_triple(self, p):
         """
@@ -531,32 +525,15 @@ class Parser:
         """
         p[0] = TripleNode(p[2], p[4], p[6])
 
-    def p_variable(self, p):
-        """
-        variable : NAME
-        """
-        p[0] = VariableNode(p[1])
+    # ## Collections
 
-    def p_graph_atom(self, p):
+    def p_collection(self, p):
         """
-        graph_atom : '{' '}'
-                   | '{' graph_construction '}'
+        collection : list_atom
+                   | tuple_atom
+                   | graph_atom
         """
-        if len(p) == 3:
-            p[0] = GraphNode()
-        else:
-            p[0] = GraphNode(p[2])
-
-    def p_graph_construction(self, p):
-        """
-        graph_construction : atom
-                           | graph_construction ',' atom
-        """
-        if len(p) == 2:
-            p[0] = AtomListNode(p[1])
-        else:
-            p[1].append_atom_node(p[3])
-            p[0] = p[1]
+        p[0] = p[1]
 
     def p_list_atom(self, p):
         """
@@ -571,19 +548,49 @@ class Parser:
         """
         p[0] = p[1]
 
-    def p_func_call(self, p):
+    def p_tuple_atom(self, p):
         """
-        func_call : atom '(' ')'
-                  | atom '(' argument_list ')'
+        tuple_atom : '(' ',' ')'
+                   | '(' tuple_construction ')'
         """
-        p[0] = FunctionCallNode(p[1]) if len(p) == 4 else FunctionCallNode(p[1], p[3])
+        pass
 
-    def p_subscript_call(self, p):
+    def p_tuple_construction(self, p):
         """
-        subscript_call : atom '[' test ']'
-                       | atom '[' test ':' ']'
-                       | atom '[' ':' test ']'
-                       | atom '[' test ':' test ']'
+        tuple_construction : test ','
+                           | test ',' test_list
+        """
+        pass
+
+    def p_graph_atom(self, p):
+        """
+        graph_atom : '{' '}'
+                   | '{' graph_construction '}'
+        """
+        if len(p) == 3:
+            p[0] = GraphNode()
+        else:
+            p[0] = GraphNode(p[2])
+
+    def p_graph_construction(self, p):
+        """
+        graph_construction : test
+                           | graph_construction ',' test
+        """
+        if len(p) == 2:
+            p[0] = AtomListNode(p[1])
+        else:
+            p[1].append_atom_node(p[3])
+            p[0] = p[1]
+
+    # ## Subscript
+
+    def p_atom_subscript(self, p):
+        """
+        atom_subscript : atom_expr '[' test ']' %prec Subscript
+                       | atom_expr '[' test ':' ']' %prec Subscript
+                       | atom_expr '[' ':' test ']' %prec Subscript
+                       | atom_expr '[' test ':' test ']' %prec Subscript
         """
         if len(p) == 5:
             p[0] = BinOperationNode(op_name='subscript', magic_method='__getitem__', left=p[1], right=p[3])
@@ -594,6 +601,22 @@ class Parser:
                 p[0] = SubscriptNode(p[1], upper=p[5])
         else:
             p[0] = SubscriptNode(p[1], lower=p[3], upper=p[5])
+
+    # ## Function call
+
+    def p_atom_call(self, p):
+        """
+        atom_call : atom_expr '(' ')' %prec AtomCall
+                  | atom_expr '(' argument_list ')' %prec AtomCall
+        """
+        p[0] = FunctionCallNode(p[1], peephole=self._create_peephole(p.lineno(1), p.lineno(3))) if len(
+            p) == 4 else FunctionCallNode(p[1], p[3], peephole=self._create_peephole(p.lineno(1), p.lineno(4)))
+
+    def p_atom_method_call(self, p):
+        """
+        atom_attr_call : atom_expr '.' NAME %prec MethodCall
+        """
+        pass
 
     def p_argument_list(self, p):
         """
@@ -617,7 +640,9 @@ class Parser:
             p[0] = FunctionArgumentNode(name=p[1], arg_expr=p[3])
 
     def p_empty(self, p):
-        """empty :"""
+        """
+        empty :
+        """
         pass
 
     def p_error(self, p):
@@ -626,16 +651,20 @@ class Parser:
                 SyntaxError(err_msg='invalid syntax.', lexdata=p.lexer.lexdata, lineno=p.lineno, lexpos=p.lexpos))
             self.parser.errok()
         else:
-            self.syntax_error_list.append(ParserError('syntax error at the end of the file.'))
+            self.syntax_error_list.append(EOFParserError(err_msg='syntax error at the end of file.'))
 
-    def parse(self, program_input: str):
+    @staticmethod
+    def parse(program_container: ProgramContainer):
         """
-        Parses the given string.
-        :param prog_input: the string of the program that shall be parsed.
-        :return:
+        Parses the given program.
+        :param program_container:  the container of the program that shall be parsed.
+        :return: the abstract syntax tree.
         """
-        tokenizer = Tokenizer()
-        response = self.parser.parse(program_input, lexer=tokenizer.indentation_lexer())
-        if self.syntax_error_list:
-            raise ParsersError(error_msg='The program could not be parsed.', parser_errors=self.syntax_error_list)
+        tokenizer = Tokenizer(program_origin=program_container.origin)
+        parser_instance = Parser(program_container=program_container)
+        response = parser_instance.parser.parse(program_container.program_string, lexer=tokenizer.indentation_lexer(),
+                                                tracking=True)
+        if parser_instance.syntax_error_list:
+            raise ParserErrors(error_msg='The program could not be parsed.',
+                               parser_errors=parser_instance.syntax_error_list)
         return response
