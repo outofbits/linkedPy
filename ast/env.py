@@ -1,8 +1,5 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
-# from .ast import ASTNode
-from collections import namedtuple
-
 
 class _UnknownType(object):
     """ This class represents an unknown type."""
@@ -193,4 +190,75 @@ class Environment(object):
         return self._prefix_table[name] if name in self._prefix_table else None
 
     def __repr__(self):
-        return 'Environment> Variable-Table: %s Function-Table: %s' % (self._variable_table, self._function_table)
+        return 'Environment {Variable-Table: %s,  Function-Table: %s}' % (self._variable_table, self._function_table)
+
+
+class ProgramContainer(object):
+    """ This class contains the program data with additional information like the origin. """
+
+    def __init__(self, program_string: str, origin: str = None):
+        self.origin = origin
+        self.program_string = program_string
+        self._p_container = dict()
+        for line_no, line in enumerate(program_string.splitlines()):
+            self._p_container[line_no + 1] = line
+
+    def __getitem__(self, item) -> str:
+        if isinstance(item, slice):
+            start = item.start if item.start is not None else 1
+            stop = item.stop if item.stop is not None else len(self._p_container)
+            return [self._p_container[x] for x in range(start, stop,
+                                                        item.step if item.step is not None else 1)]
+        elif isinstance(item, int):
+            if item not in self._p_container:
+                raise IndexError('Index %s is out of bounds.' % item)
+            return self._p_container[item]
+        else:
+            raise TypeError('The given type %s is inappropriate.' % item.__class__.__name__)
+
+
+class ProgramPeephole(object):
+    """ This class represents a peephole that points at a certain area of the program. """
+
+    def __init__(self, program_container: ProgramContainer, start_line_no: int, end_line_no: int):
+        self.program_container = program_container
+        self.start_line_no = start_line_no
+        self.end_line_no = end_line_no
+
+    def program_snippet(self):
+        """
+        Returns the program code between the start and end line.
+        :return: the program code between the start and end line.
+        """
+        if self.start_line_no == self.end_line_no:
+            return self.program_container[self.start_line_no]
+        else:
+            return '\n'.join(self.program_container[self.start_line_no:self.end_line_no])
+
+    def __repr__(self):
+        return '{%sLine: (%d,%d)}' % (
+            'Origin: %s ' % self.program_container.origin if self.program_container.origin is not None else '',
+            self.start_line_no, self.end_line_no)
+
+
+class ProgramStack(object):
+    """ This class represents the course of the program execution. """
+
+    def __init__(self, program_stack, peephole: ProgramPeephole):
+        self.prev = program_stack
+        self.peephole = peephole
+
+    def get_stack(self, max_len=10) -> [ProgramPeephole]:
+        """
+        Goes back in the given program stack and returns all entries as a list, where the most recent entry is at the
+        beginning.
+        :param max_len: the maximal number of entries that shall be returned.
+        :return: the traceback of the program stack as list of peepholes that point at certain areas of the program.
+        """
+        stack = [self.peephole]
+        stack_prev = self.prev
+        while stack_prev is not None and max_len > 0:
+            stack.append(stack_prev.peephole)
+            stack_prev = stack_prev.prev
+            max_len -= 1
+        return stack
