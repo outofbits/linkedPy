@@ -1,0 +1,210 @@
+# Grammar for linkedPy
+
+program : file_input
+
+
+## File input
+
+file_input : file_header
+           | file_header file_body
+
+file_header : empty
+            | file_header NEWLINE
+            | file_header prefix_statement
+
+file_body : statement
+          | file_body statement
+          | file_body NEWLINE
+
+
+## Linked Data prefix / IRI
+
+prefix_statement : '@' base iri '.'
+                 | '@' prefix NAME ':' iri '.'
+
+
+## Statements
+
+statement : simple_statement NEWLINE
+          | simple_statement ';' NEWLINE
+          | compound_statement
+
+### Simple statements
+
+simple_statement : single_statement
+                 | simple_statement ';' single_statement
+
+single_statement : flow_statement
+                 | pass_statement
+
+pass_statement : pass
+
+flow_statement : continue_statement
+               | break_statement
+               | return_statement
+
+continue_statement : continue
+
+break_statement : break
+
+return_statement : return
+                 | return test
+
+### Suite
+
+suite : simple_statement NEWLINE
+      | NEWLINE INDENT statement_list DEDENT
+
+statement_list : statement
+               | statement_list statement
+
+### Compound statements
+
+compound_statement : function_definition
+                   | if_statement
+                   | while_statement
+                   | for_statement
+
+if_statement : if test ':' suite elif_statement
+
+elif_statement : empty
+               | else ':' suite
+               | elif test ':' suite elif_statement
+
+while_statement : while test ':' suite
+                | while test ':' suite else ':' suite
+
+for_statement : for NAME in test ':' suite
+              | for NAME in test ':' suite else ':' suite
+
+
+## Expressions and Tests
+
+### Tests
+
+test : bool_test
+     | bool_test if bool_test else test %prec ConditionalExpression
+
+bool_test : not_test
+          | bool_test or bool_test
+          | bool_test and bool_test
+
+not_test : expr
+         | not not_test
+
+### Expressions
+
+expr : expr_unary
+     | arithmetic_expr
+     | comparison_expr
+     | bits_expr
+
+expr_unary : atom_expr
+           | '+' expr_unary %prec UPLUS
+           | '-' expr_unary %prec UMINUS
+           | '~' expr_unary
+
+arithmetic_expr : expr '+' expr
+                | expr '-' expr
+                | expr '*' expr
+                | expr '/' expr
+                | expr FLOORDIVIDE expr
+                | expr '%' expr
+                | expr POWER expr
+
+comparison_expr : expr '<' expr
+                | expr '>' expr
+                | expr EQEQUAL expr
+                | expr NOTEQUAL expr
+                | expr LESSEQUAL expr
+                | expr GREATEREQUAL expr
+                | expr in expr
+                | expr not in expr %prec NotIn
+                | expr is expr
+                | expr is not expr %prec IsNot
+
+bits_expr : expr '|' expr
+          | expr '^' expr
+          | expr '&' expr
+          | expr LSHIFT expr
+          | expr RSHIFT expr
+
+
+## Atoms
+
+atom_expr : atom
+          | atom_call
+          | atom_subscript
+          | atom_attr_call
+
+atom : '(' expr ')'
+     | variable
+     | const_atom
+
+variable : NAME
+
+### Constants
+
+const_atom : none
+           | bool
+           | number
+           | str
+           | resource
+           | triple
+           | collection
+
+none : None
+
+bool : True
+     | False
+
+number :  NUMBER
+
+str : STRING
+
+resource : IRI
+
+triple : '(' test ',' test ',' test ')'
+
+#### Collections
+
+collection : list_atom
+           | tuple_atom
+           | graph_atom
+
+list_atom : '[' ']'
+          | '[' list_construction ']'
+
+list_construction : test_list
+
+tuple_atom : '(' ',' ')'
+           | '(' tuple_construction ')'
+
+tuple_construction : test ','
+                   | test ',' test_list
+
+graph_atom : '{' '}'
+           | '{' graph_construction '}'
+
+graph_construction : test
+                   | graph_construction ',' test
+
+#### Atom Call / Subscript / Attr/Method Call
+
+atom_subscript : atom_expr '[' test ']' %prec Subscript
+               | atom_expr '[' test ':' ']' %prec Subscript
+               | atom_expr '[' ':' test ']' %prec Subscript
+               | atom_expr '[' test ':' test ']' %prec Subscript
+
+atom_attr_call : atom_expr '.' NAME %prec MethodCall
+
+argument_list : argument
+              | argument_list ',' argument
+
+argument : test
+         | NAME '=' test
+
+empty :
+
+!! Amb: !!
+  * triple causes shift/reduce conflict with ordinary tuples (triple is a tuple with three entries)
