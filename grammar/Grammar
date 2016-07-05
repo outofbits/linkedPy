@@ -1,27 +1,13 @@
 # Grammar for linkedPy
 
-program : file_input
-
+program : empty
+        | file_input
 
 ## File input
 
-file_input : file_header
-           | file_header file_body
-
-file_header : empty
-            | file_header NEWLINE
-            | file_header prefix_statement
-
-file_body : statement
-          | file_body statement
-          | file_body NEWLINE
-
-
-## Linked Data prefix / IRI
-
-prefix_statement : '@' base iri '.'
-                 | '@' prefix NAME ':' iri '.'
-
+file_input : statement
+           | file_body statement
+           | file_body NEWLINE
 
 ## Statements
 
@@ -34,10 +20,25 @@ statement : simple_statement NEWLINE
 simple_statement : single_statement
                  | simple_statement ';' single_statement
 
-single_statement : flow_statement
+single_statement : test
+                 | assign_statement
+                 | flow_statement
                  | pass_statement
+                 | prefix_statement
 
-pass_statement : pass
+assign_statement : test '=' test
+                 | test PLUSEQUAL test
+                 | test MINUSEQUAL test
+                 | test TIMESEQUAL test
+                 | test DIVIDEQUAL test
+                 | test MODULOEQUAL test
+                 | test LANDEQUAL test
+                 | test LOREQUAL test
+                 | test XOREQUAL test
+                 | test RSHIFTEQUAL test
+                 | test LSHIFTEQUAL test
+                 | test POWEREQUAL test
+                 | test FLOORDIVIDEQUAL test
 
 flow_statement : continue_statement
                | break_statement
@@ -49,6 +50,11 @@ break_statement : break
 
 return_statement : return
                  | return test
+
+pass_statement : pass
+
+prefix_statement : '@' base iri '.'
+                 | '@' prefix NAME ':' iri '.'
 
 ### Suite
 
