@@ -1,7 +1,7 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
 from .exception import ExecutionError, VariableError, TypeError as ITypeError
-from .env import Environment, FunctionDescription, ProgramPeephole, ProgramContainer, ProgramStack
+from .env import Environment, Function, ProgramPeephole, ProgramContainer, ProgramStack
 from datatypes.linkedtypes import resource, triple, graph
 from abc import abstractmethod
 from enum import Enum
@@ -156,44 +156,37 @@ class FunctionNode(ASTNode):
     def __init__(self, func_name, trunk, parameter_list=None, *args, **kwargs):
         super(FunctionNode, self).__init__(*args, **kwargs)
         self.environment = None
-        self.func_name = func_name
+        self.child.append(func_name)
         self.child.append(trunk)
         self.child.append(parameter_list)
 
     @property
-    def trunk(self):
+    def function_name(self):
         return self.child[0]
 
     @property
-    def parameter_list(self):
+    def trunk(self):
         return self.child[1]
 
-    def _local_environment(self, parent_environment: Environment, program_stack: ProgramStack) -> Environment:
-        local_env = Environment(parent_environment)
-        default_params = self.parameter_list.default_expression_parameters
-        for param_name in default_params.keys():
-            param_expr_result = default_params[param_name].execute(parent_environment, program_stack).value
-            local_env.insert_variable(param_name, value=param_expr_result)
-        return local_env
-
-    def call(self, program_stack, *fixed_args, **named_args):
-        loc_env = self._local_environment(self.environment, program_stack)
-        for index, value in enumerate(fixed_args):
-            loc_env.insert_variable(name=self.parameter_list.parameter_names[index], value=value)
-        for arg_name in named_args.keys():
-            loc_env.insert_variable(name=arg_name, value=named_args[arg_name])
-        return ASTExecutionResult(ASTExecutionResultType.value_,
-                                  self.trunk.execute(loc_env, program_stack).value);
+    @property
+    def parameter_list(self):
+        return self.child[2]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         self.environment = environment
-        environment.insert_function(self.func_name, self, self.parameter_list.total_parameters_count,
-                                    self.parameter_list.fixed_parameters_count)
+        total_parameters = dict()
+        default_parameters = dict()
+        for index, parameter_node in enumerate(self.parameter_list):
+            total_parameters[index] = parameter_node.parameter_name
+            if parameter_node.default_expression is not None:
+                default_parameters[parameter_node.parameter_name] = parameter_node.default_expression
+        environment.insert_function(Function(name=self.function_name, ast_node=self.trunk, environment=environment,
+                                             total_parameters=total_parameters, default_parameters=default_parameters))
         return ASTExecutionResult(ASTExecutionResultType.void_, None)
 
     def __repr__(self) -> str:
         return '(%s def ..%s.. %s { %s }' % (
-            self.__class__.__name__, self.func_name, repr(self.parameter_list) if self.parameter_list else '',
+            self.__class__.__name__, self.function_name, repr(self.parameter_list) if self.parameter_list else '',
             repr(self.trunk))
 
 
@@ -327,52 +320,40 @@ class TestListNode(ASTNode):
 class FunctionCallNode(ASTNode):
     """ This class represents the call of a function with the given amount of arguments. """
 
-    def __init__(self, var_expr, argument_list=None, *args, **kwargs):
+    def __init__(self, left_side_expression, argument_list=None, *args, **kwargs):
         super(FunctionCallNode, self).__init__(*args, **kwargs)
-        self.var_expr = var_expr
+        self.child.append(left_side_expression)
         self.child.append(argument_list)
 
     @property
-    def argument_list(self):
+    def left_side_expression(self):
         return self.child[0]
 
+    @property
+    def argument_list(self):
+        return self.child[1]
+
     def execute(self, environment: Environment, program_stack: ProgramStack):
-        var_description = self.var_expr.prepare(environment, program_stack).value
-        if not isinstance(var_description.value, FunctionDescription):
-            raise ITypeError('%s is not a function.' % var_description.name,
-                             program_stack=program_stack)
-        function_description = environment.get_function(var_description.value.name)
-        if function_description is None:
-            raise VariableError('Function %s was not declared before !' % var_description.name,
-                                program_stack=program_stack)
+        function = self.left_side_expression.execute(environment, program_stack).value
+        if function is None or not hasattr(function, '__call__'):
+            raise ITypeError('\'%s\' is not callable.' % function.__class__.__name__)
+        # Prepare the arguments for the call of the function.
         fixed_arguments = list()
         named_arguments = dict()
         if self.argument_list:
-            if self.argument_list.total_arguments_count > function_description.total_parameters_count:
-                raise ITypeError(
-                    'More arguments (%d) given than taken by the method %s. At least %d arguments must be given and at most %d !' % (
-                        self.argument_list.total_arguments_count, function_description.name,
-                        function_description.fixed_parameters_count, function_description.total_parameters_count),
-                    program_stack)
-            if self.argument_list.total_arguments_count < function_description.fixed_parameters_count:
-                raise ITypeError(
-                    'Less arguments (%d) given than taken by the method %s. At least %d arguments must be given and at most %d !' % (
-                        self.argument_list.total_arguments_count, function_description.name,
-                        function_description.fixed_parameters_count, function_description.total_parameters_count),
-                    program_stack)
             # Compute arguments
             for fixed_arg in self.argument_list.fixed_arguments:
                 fixed_arguments.append(fixed_arg.execute(environment, program_stack).value)
             for arg_name in self.argument_list.named_arguments:
                 named_arguments[arg_name] = self.argument_list.named_arguments[arg_name].execute(environment,
                                                                                                  program_stack).value
-        return ASTExecutionResult(ASTExecutionResultType.value_,
-                                  function_description.ast_node.call(program_stack, *fixed_arguments,
-                                                                     **named_arguments).value)
+        return ASTExecutionResult(ASTExecutionResultType.value_, function.__call__(program_stack, *fixed_arguments,
+                                                                                   **named_arguments))
 
     def __repr__(self) -> str:
         return '(%s %s %s)' % (
-            self.__class__.__name__, repr(self.var_expr), repr(self.argument_list) if self.argument_list else '()')
+            self.__class__.__name__, repr(self.left_side_expression),
+            repr(self.argument_list) if self.argument_list else '()')
 
 
 class PassNode(ASTNode):
@@ -718,25 +699,6 @@ class PrefixNode(ASTNode):
 
     def __repr__(self):
         return '(%s %s : %s)' % (self.__class__.__name__, self.name, self.iri)
-
-
-class PrefixNodeList(ASTNode):
-    def __init__(self, prefix_node=None, *args, **kwargs):
-        super(PrefixNodeList, self).__init__(*args, **kwargs)
-        if prefix_node is not None:
-            self.append_prefix(prefix_node)
-
-    def append_prefix(self, prefix_node: PrefixNode):
-        """
-        Appends the given prefix node to this prefix node list.
-        :param prefix_node: the prefix node that shall be appended to this prefix node list.
-        """
-        self.child.append(prefix_node)
-
-    def execute(self, environment: Environment, program_stack: ProgramStack):
-        for prefix_node in self.children:
-            prefix_node.execute(environment)
-        return ASTExecutionResult(ASTExecutionResultType.void_, None)
 
 
 class ResourceNode(ASTNode):

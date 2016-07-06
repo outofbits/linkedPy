@@ -1,53 +1,121 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
+from .exception import TypeError as ITypeError
+
 
 class _UnknownType(object):
     """ This class represents an unknown type."""
     pass
 
 
-class PrefixTable(object):
-    """ This class represents a table of prefixes. """
-
-    def __init__(self):
-        self._table = dict()
-
-    def add_prefix(self, name, iri):
-        """
-        Adds the given
-        :param name: the name of the prefix.
-        :param iri: the iri assigned to the given prefix.
-        """
-        self._table[name] = iri
-
-    def prefix(self, name):
-        """
-        Gets the prefix with the given name or None, if there is no such prefix.
-        :param name: the name of the prefix of which the iri shall be returned.
-        :return: the prefix with the given name or None, if there is no such prefix.
-        """
-        return self._table[name]
-
-
-class FunctionDescription(object):
+class Function(object):
     """ This class represents a description of a function. """
 
-    def __init__(self, name, ast_node, total_parameters_count, fixed_parameters_count):
+    def __init__(self, name, ast_node, environment, total_parameters, default_parameters, doc: str = None):
         """
         Initializes a function description with the given information.
         :param name: the name of the function.
-        :param ast_node: the root node of the abstract syntax tree of the method.
-        :param total_parameters_count: the total parameters of the function.
-        :param fixed_parameters_count: the amount of fixed parameters of the function.
+        :param ast_node: the root node of the abstract syntax tree of the function.
+        :param environment: the enclosed environment of the function.
+        :param total_parameters: the list of all parameters.
+        :param default_parameters: the list of parameters with default expressions.
+        :param doc: the optional documentation of the function.
         """
         self.name = name
         self.ast_node = ast_node
-        self.total_parameters_count = total_parameters_count
-        self.fixed_parameters_count = fixed_parameters_count
+        self.environment = environment
+        self.total_parameters = total_parameters
+        self.default_parameters = default_parameters
+        self.doc = doc
 
-    def __repr__(self):
-        return '(\'Name\' : %s, \'AST\' : %s, \'Total parameters\' : %s, \'Fixed parameters\' : %s)' % (
-            self.name, self.ast_node, self.total_parameters_count, self.fixed_parameters_count)
+    @property
+    def total_parameters_count(self):
+        return len(self.total_parameters)
+
+    @property
+    def optional_parameters_count(self):
+        return len(self.default_parameters)
+
+    @property
+    def mandatory_parameters_count(self):
+        return self.total_parameters_count - self.optional_parameters_count
+
+    def __name__(self):
+        """
+        Gets the name of the function.
+        :return: the name of the function.
+        """
+        return self.name
+
+    def __defaults__(self):
+        """
+        A tuple containing default argument values for those arguments that have defaults, or None if no arguments have
+        a default value.
+        :return: tuple containing default argument values for those arguments that have defaults, or None if no
+        arguments have a default value
+        """
+        if self.default_parameters is not None:
+            return (default.execute(self.environment, None) for default in self.default_parameters.values())
+        else:
+            return None
+
+    def __module__(self):
+        """
+        Gets the enclosing module name.
+        :return: the enclosing module name.
+        """
+        pass
+
+    def __code__(self):
+        """
+        Gets the code of this function in form of an abstract syntax tree.
+        :return: the code of the function in form of an abstract syntax tree.
+        """
+        return self.ast_node
+
+    def __doc__(self):
+        """
+        Gets the function’s documentation string, or None if unavailable; not inherited by subclasses
+        :return: the function’s documentation string, or None if unavailable; not inherited by subclasses
+        """
+        return self.doc
+
+    def __call__(self, program_stack, *positional_args, **keyword_args):
+        local_environment = Environment(self.environment)
+        # Check that the arguments are given properly.
+        total_len = len(positional_args) + len(keyword_args)
+        argument_repr = ('argument', 'arguments')
+        if total_len > self.total_parameters_count or total_len < self.mandatory_parameters_count:
+            raise ITypeError('%d %s given, but \'%s\' takes %d %s%s.' % (
+                total_len, argument_repr[total_len > 1], self.name, self.total_parameters_count,
+                argument_repr[self.total_parameters_count > 1],
+                ', where %d %s are optional' % (self.optional_parameters_count, argument_repr[
+                    self.optional_parameters_count > 1]) if self.optional_parameters_count > 0 else ''),
+                             program_stack)
+        # Handle positional arguments
+        parameters_names_to_activate = set(self.total_parameters.values())
+        for index, positional_arg_value in enumerate(positional_args):
+            positional_arg_name = self.total_parameters[index]
+            local_environment.insert_variable(self.total_parameters[index], _UnknownType, positional_arg_value)
+            parameters_names_to_activate.remove(positional_arg_name)
+        # Handle the given keyword arguments.
+        for keyword_arg_name in keyword_args:
+            if keyword_arg_name not in parameters_names_to_activate:
+                raise ITypeError(
+                    'Keyword argument \'%s\' is not applicable for this call of \'%s\'.' % (keyword_arg_name, self.name),
+                    program_stack)
+            local_environment.insert_variable(keyword_arg_name, _UnknownType, keyword_args[keyword_arg_name])
+            parameters_names_to_activate.remove(keyword_arg_name)
+        # Handle the parameters with default expressions that were not be given.
+        for default_arg_name in parameters_names_to_activate:
+            if default_arg_name not in self.default_parameters:
+                raise ITypeError(
+                    'Fixed argument \'%s\' was not given for this call of \'%s\'.' % (default_arg_name, self.name),
+                    program_stack)
+            local_environment.insert_variable(default_arg_name, _UnknownType,
+                                              self.default_parameters[default_arg_name].execute(local_environment,
+                                                                                                program_stack).value)
+        return self.__code__().execute(local_environment, program_stack).value
 
 
 class VariableDescription(object):
@@ -96,21 +164,15 @@ class Environment(object):
         self._prefix_table = dict()
         self._parent_environment = parent_environment
 
-    def insert_function(self, name: str, ast_node, total_parameters_count: int, fixed_parameters_count: int):
+    def insert_function(self, function: Function):
         """
-        Inserts a function with the given name and the root node of the abstract syntax tree of the method.
-        :param name: the name of the function.
-        :param ast_node: the root node of the abstract syntax tree of the method.
-        :param total_parameters_count: the total amount of parameters of the method.
-        :param fixed_parameters_count: the amount of fixed parameters.
-        :return: the newly created function definition.
+        Inserts the given function definition into this environment.
+        :param function: the function that shall be inserted into this environment.
         """
-        function_description = FunctionDescription(name, ast_node, total_parameters_count, fixed_parameters_count)
-        self._function_table[name] = function_description
-        self.insert_variable(name, value=function_description)
-        return function_description
+        self._function_table[function.name] = function
+        self.insert_variable(function.name, value=function)
 
-    def get_local_function(self, name: str) -> FunctionDescription:
+    def get_local_function(self, name: str) -> Function:
         """
         Gets the function description of the variable with the given name, if it can be found in this environment,
         otherwise None is returned.
@@ -122,7 +184,7 @@ class Environment(object):
             return self._function_table[name]
         return None
 
-    def get_function(self, name: str) -> FunctionDescription:
+    def get_function(self, name: str) -> Function:
         """
         Gets the function description of the variable with the given name, if it can be found in this environment or
         ancestors, otherwise None is returned.

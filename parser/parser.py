@@ -112,17 +112,15 @@ class Parser:
         """
         function_definition : def NAME function_parameters ':' suite
         """
-        p[0] = FunctionNode(p[2], p[5], p[3], peephole=self._create_peephole(p.lineno(1), p.lineno(5)))
+        p[0] = FunctionNode(func_name=p[2], parameter_list=p[3], trunk=p[5],
+                            peephole=self._create_peephole(p.lineno(1), p.lineno(5)))
 
     def p_function_parameters(self, p):
         """
         function_parameters : '(' ')'
                             | '(' parameter_list  ')'
         """
-        if len(p) == 3:
-            p[0] = ParameterListNode()
-        else:
-            p[0] = p[2]
+        p[0] = [] if len(p) == 3 else p[2]
 
     def p_parameter_list(self, p):
         """
@@ -130,9 +128,9 @@ class Parser:
                        | parameter_list ',' parameter
         """
         if len(p) == 2:
-            p[0] = ParameterListNode(p[1])
+            p[0] = [p[1]]
         else:
-            p[1].insert_parameter(p[3])
+            p[1].append(p[3])
             p[0] = p[1]
 
     def p_parameter(self, p):
