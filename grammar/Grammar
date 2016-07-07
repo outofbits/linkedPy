@@ -198,9 +198,13 @@ graph_construction : test
 #### Atom Call / Subscript / Attr/Method Call
 
 atom_subscript : atom_expr '[' test ']' %prec Subscript
-               | atom_expr '[' test ':' ']' %prec Subscript
-               | atom_expr '[' ':' test ']' %prec Subscript
-               | atom_expr '[' test ':' test ']' %prec Subscript
+               | atom_expr '[' slice ']' %prec Subscript
+
+slice : slice_atom ':' slice_atom ':' slice_atom
+      | slice_atom ':' slice_atom
+
+slice_atom : empty
+           | test
 
 atom_attr_call : atom_expr '.' NAME %prec MethodCall
 
