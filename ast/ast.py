@@ -79,6 +79,10 @@ class StatementsBlockNode(ASTNode):
         super(StatementsBlockNode, self).__init__(*args, **kwargs)
         self.child += statements if statements is not None else []
 
+    @property
+    def empty(self):
+        return bool(self.child)
+
     @staticmethod
     def merge(stmt_block_1, stmt_block_2) -> ASTNode:
         """
@@ -153,7 +157,7 @@ class VariableAssignmentNode(ASTNode):
 class FunctionNode(ASTNode):
     """ This class represents a function definition with a non-empty trunk and none, one or more arguments. """
 
-    def __init__(self, func_name, trunk, parameter_list=None, *args, **kwargs):
+    def __init__(self, func_name: str, trunk: StatementsBlockNode, parameter_list=None, *args, **kwargs):
         super(FunctionNode, self).__init__(*args, **kwargs)
         self.environment = None
         self.child.append(func_name)
@@ -161,12 +165,21 @@ class FunctionNode(ASTNode):
         self.child.append(parameter_list)
 
     @property
-    def function_name(self):
+    def function_name(self) -> str:
         return self.child[0]
 
     @property
-    def trunk(self):
+    def trunk(self) -> StatementsBlockNode:
         return self.child[1]
+
+    @property
+    def documentation(self) -> str:
+        if not self.trunk.empty:
+            first_statement = self.trunk.children[0]
+            if isinstance(first_statement, ConstantNode):
+                first_stmt_const = first_statement.value
+                return first_stmt_const if isinstance(first_stmt_const, str) else None
+        return None
 
     @property
     def parameter_list(self):
@@ -184,7 +197,8 @@ class FunctionNode(ASTNode):
                                     value=Function(name=self.function_name, ast_node=self.trunk,
                                                    environment=environment,
                                                    total_parameters=total_parameters,
-                                                   default_parameters=default_parameters))
+                                                   default_parameters=default_parameters,
+                                                   doc=self.documentation))
         return ASTExecutionResult(ASTExecutionResultType.void_, None)
 
     def __repr__(self) -> str:
