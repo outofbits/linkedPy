@@ -1,7 +1,7 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
-from .exception import ExecutionError, VariableError, TypeError as ITypeError
-from .env import Environment, Function, ProgramPeephole, ProgramContainer, ProgramStack
+from .exception import ExecutionError, VariableError, InternalError, TypeError as ITypeError
+from .env import Environment, Function, Variable, ProgramPeephole, ProgramStack
 from datatypes.linkedtypes import resource, triple, graph
 from abc import abstractmethod
 from enum import Enum
@@ -140,7 +140,7 @@ class VariableAssignmentNode(ASTNode):
         value_response = self.value_expression.execute(environment, program_stack)
         var_response = self.variable_expression.prepare(environment, program_stack)
         if var_response.type == ASTPrepareType.not_found_:
-            environment.insert_variable(self.variable_expression.name, value=value_response.value)
+            environment.insert_variable(name=self.variable_expression.name, type=Variable, value=value_response.value)
         else:
             var_response.value.change_value(value_response.value)
         return ASTExecutionResult(ASTExecutionResultType.void_, None)
@@ -180,8 +180,11 @@ class FunctionNode(ASTNode):
             total_parameters[index] = parameter_node.parameter_name
             if parameter_node.default_expression is not None:
                 default_parameters[parameter_node.parameter_name] = parameter_node.default_expression
-        environment.insert_function(Function(name=self.function_name, ast_node=self.trunk, environment=environment,
-                                             total_parameters=total_parameters, default_parameters=default_parameters))
+        environment.insert_variable(name=self.function_name, type=Function,
+                                    value=Function(name=self.function_name, ast_node=self.trunk,
+                                                   environment=environment,
+                                                   total_parameters=total_parameters,
+                                                   default_parameters=default_parameters))
         return ASTExecutionResult(ASTExecutionResultType.void_, None)
 
     def __repr__(self) -> str:
@@ -313,7 +316,7 @@ class TestListNode(ASTNode):
     def execute(self, environment: Environment, program_stack: ProgramStack):
         value_list = list()
         for test_node in self.children:
-            value_list.append(test_node.execute(environment).value)
+            value_list.append(test_node.execute(environment, program_stack).value)
         return ASTExecutionResult(ASTExecutionResultType.value_, value_list)
 
 
@@ -336,7 +339,7 @@ class FunctionCallNode(ASTNode):
     def execute(self, environment: Environment, program_stack: ProgramStack):
         function = self.left_side_expression.execute(environment, program_stack).value
         if function is None or not hasattr(function, '__call__'):
-            raise ITypeError('\'%s\' is not callable.' % function.__class__.__name__)
+            raise ITypeError('\'%s\' is not callable.' % function.__class__.__name__, program_stack)
         # Prepare the arguments for the call of the function.
         fixed_arguments = list()
         named_arguments = dict()
@@ -347,8 +350,15 @@ class FunctionCallNode(ASTNode):
             for arg_name in self.argument_list.named_arguments:
                 named_arguments[arg_name] = self.argument_list.named_arguments[arg_name].execute(environment,
                                                                                                  program_stack).value
-        return ASTExecutionResult(ASTExecutionResultType.value_, function.__call__(program_stack, *fixed_arguments,
-                                                                                   **named_arguments))
+        if type(function) == Function:
+            return ASTExecutionResult(ASTExecutionResultType.value_, function.__call__(program_stack, *fixed_arguments,
+                                                                                       **named_arguments))
+        else:
+            try:
+                return ASTExecutionResult(ASTExecutionResultType.value_, function.__call__(*fixed_arguments,
+                                                                                           **named_arguments))
+            except Exception as e:
+                raise InternalError(e, program_stack)
 
     def __repr__(self) -> str:
         return '(%s %s %s)' % (
@@ -506,7 +516,7 @@ class ForOperationNode(ASTNode):
         local_env = Environment(environment)
         iterable_obj = iter(self.iterable_node.execute(environment, program_stack).value)
         for entry in iterable_obj:
-            local_env.insert_variable(self.variable_name, value=entry)
+            local_env.insert_variable(name=self.variable_name, type=Variable, value=entry)
             trunk_response = self.trunk.execute(local_env, program_stack)
             if trunk_response.type == ASTExecutionResultType.return_:
                 return trunk_response
@@ -678,7 +688,7 @@ class VariableNode(ASTNode, ASTLeftSideExpressionNode):
     def execute(self, environment: Environment, program_stack: ProgramStack):
         var_description = self.prepare(environment, program_stack)
         if var_description.type == ASTPrepareType.not_found_:
-            raise VariableError(error_message='Variable %s was not defined before.' % self.name,
+            raise VariableError(error_message='Variable \'%s\' was not defined before.' % self.name,
                                 program_stack=program_stack)
         return ASTExecutionResult(ASTExecutionResultType.value_, (var_description.value).value)
 
@@ -785,7 +795,8 @@ class ListNode(ASTNode):
     def execute(self, environment: Environment, program_stack: ProgramStack):
         if self.list_construction_node is None:
             return ASTExecutionResult(ASTExecutionResultType.value_, list())
-        return ASTExecutionResult(ASTExecutionResultType.value_, self.list_construction_node.execute(environment).value)
+        return ASTExecutionResult(ASTExecutionResultType.value_,
+                                  self.list_construction_node.execute(environment, program_stack).value)
 
 
 class SubscriptNode(ASTNode):

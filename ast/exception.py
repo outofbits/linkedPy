@@ -27,19 +27,28 @@ class ExecutionError(Exception):
                     current_trace_line = '%sbetween line %d and %d' % (
                         peephole.program_container.origin if peephole.program_container.origin is not None else '',
                         peephole.start_line_no, peephole.end_line_no)
-                program_traceback = '\t%s\n\t\t%s\n%s' % (current_trace_line, peephole.program_snippet(), program_traceback)
-        return 'Traceback (most recent call last):\n%s%s: %s' % (program_traceback, self.__class__.__name__, self.error_message)
+                program_traceback = '\t%s\n\t\t%s\n%s' % (
+                    current_trace_line, peephole.program_snippet(), program_traceback)
+        return 'Traceback (most recent call last):\n%s%s: %s' % (
+            program_traceback, self.__class__.__name__, self.error_message)
 
 
 class VariableError(ExecutionError):
-    """ This class represents a error that will be thrown, if a variable cannot be accessed. """
+    """ This class represents an error that will be thrown, if a variable cannot be accessed. """
 
     def __init__(self, error_message: str, program_stack, *args, **kwargs):
         super(VariableError, self).__init__(error_message, program_stack, *args, **kwargs)
 
 
 class TypeError(ExecutionError):
-    """ This class represents a error that will be thrown if a operation cannot be carried out with the current type."""
+    """ This class represents an error that will be thrown if a operation cannot be carried out with the current type."""
 
     def __init__(self, error_message: str, program_stack, *args, **kwargs):
         super(TypeError, self).__init__(error_message, program_stack, *args, **kwargs)
+
+
+class InternalError(ExecutionError):
+    """ This class represents an error that wraps an error that has been thrown internally."""
+
+    def __init__(self, exception: Exception, program_stack):
+        super(InternalError, self).__init__(str(exception), program_stack)

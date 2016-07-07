@@ -35,7 +35,6 @@ kwlist = (
 #    'with',
 #    'yield',
     'prefix',
-    'print',
     'base',
 )
 

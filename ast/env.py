@@ -1,6 +1,7 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
 from .exception import TypeError as ITypeError
+from datatypes.linkedtypes import resource, triple, graph
 
 
 class _UnknownType(object):
@@ -102,7 +103,8 @@ class Function(object):
         for keyword_arg_name in keyword_args:
             if keyword_arg_name not in parameters_names_to_activate:
                 raise ITypeError(
-                    'Keyword argument \'%s\' is not applicable for this call of \'%s\'.' % (keyword_arg_name, self.name),
+                    'Keyword argument \'%s\' is not applicable for this call of \'%s\'.' % (
+                        keyword_arg_name, self.name),
                     program_stack)
             local_environment.insert_variable(keyword_arg_name, _UnknownType, keyword_args[keyword_arg_name])
             parameters_names_to_activate.remove(keyword_arg_name)
@@ -118,7 +120,7 @@ class Function(object):
         return self.__code__().execute(local_environment, program_stack).value
 
 
-class VariableDescription(object):
+class Variable(object):
     """ This class represents a description of a variable including type and value."""
 
     def __init__(self, name, type=None, value=None):
@@ -159,42 +161,9 @@ class Environment(object):
         global environment as parent.)
         :param parent_environment: the parent environment of the environment that shall be initialized.
         """
-        self._function_table = dict()
         self._variable_table = dict()
         self._prefix_table = dict()
         self._parent_environment = parent_environment
-
-    def insert_function(self, function: Function):
-        """
-        Inserts the given function definition into this environment.
-        :param function: the function that shall be inserted into this environment.
-        """
-        self._function_table[function.name] = function
-        self.insert_variable(function.name, value=function)
-
-    def get_local_function(self, name: str) -> Function:
-        """
-        Gets the function description of the variable with the given name, if it can be found in this environment,
-        otherwise None is returned.
-
-        :param name: the name of the function of which the function description shall be returned.
-        :return: the function description of the function with the given name, or None, if it can not be found.
-        """
-        if name in self._function_table.keys():
-            return self._function_table[name]
-        return None
-
-    def get_function(self, name: str) -> Function:
-        """
-        Gets the function description of the variable with the given name, if it can be found in this environment or
-        ancestors, otherwise None is returned.
-
-        :param name: the name of the function of which the function description shall be returned.
-        :return: the function description of the function with the given name, or None, if it can not be found.
-        """
-        if name in self._function_table.keys():
-            return self._function_table[name]
-        return self._parent_environment.get_function(name) if self._parent_environment is not None else None
 
     def insert_variable(self, name: str, type=_UnknownType, value=None):
         """
@@ -205,11 +174,9 @@ class Environment(object):
         :param value: the value of the variable that shall be inserted.
         :return: the newly created variable definition.
         """
-        var_description = VariableDescription(name, type, value);
-        self._variable_table[name] = var_description
-        return var_description
+        self._variable_table[name] = Variable(name, type, value)
 
-    def get_local_variable(self, name: str) -> VariableDescription:
+    def get_local_variable(self, name: str) -> Variable:
         """
         Gets the variable description of the variable with the given name, if it can be found in this environment,
         otherwise None is returned.
@@ -221,7 +188,7 @@ class Environment(object):
             return self._variable_table[name]
         return None
 
-    def get_variable(self, name: str) -> VariableDescription:
+    def get_variable(self, name: str) -> Variable:
         """
         Gets the variable description of the variable with the given name, if it can be found in this environment or
         the ancestors, otherwise None is returned.
@@ -252,8 +219,40 @@ class Environment(object):
         return self._prefix_table[name] if name in self._prefix_table else None
 
     def __repr__(self):
-        return 'Environment {Variable-Table: %s,  Function-Table: %s}' % (self._variable_table, self._function_table)
+        return 'Environment {Variable-Table: %s}' % self._variable_table
 
+
+class GlobalEnvironment(Environment):
+    """ This class represents the global environment. """
+
+    internal_functions = {
+        'print': print,
+        'len': len,
+        # Collections
+        'list': list,
+        'tuple': tuple,
+        'resource': resource,
+        'triple': triple,
+        'graph': graph,
+    }
+
+    internal_attributes = {
+        '__name__': None,
+        '__file__': None,
+
+    }
+
+    def __init__(self, name, file_path=None):
+        super(GlobalEnvironment, self).__init__()
+        self.internal_attributes['__name__'] = name
+        self.internal_attributes['__file__'] = file_path
+        self._setup()
+
+    def _setup(self):
+        for i_function in self.internal_functions:
+            self.insert_variable(name=i_function, type=Function, value=self.internal_functions[i_function])
+        for i_attribute in self.internal_attributes:
+            self.insert_variable(name=i_attribute, type=Variable, value=self.internal_attributes[i_attribute])
 
 class ProgramContainer(object):
     """ This class contains the program data with additional information like the origin. """

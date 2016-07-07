@@ -7,8 +7,8 @@ import logging
 from parser.parser import Parser, ProgramStack
 from parser.exception import ParserErrors
 from ast.exception import ExecutionError
-from ast.env import Environment
-from ast.ast import ProgramContainer
+from ast.env import GlobalEnvironment
+from ast.env import ProgramContainer
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def evaluate(program_String, program_origin='unknown'):
     try:
         parsed_program = Parser.parse(program_container)
         logger.debug('Parsed AST for %s: %s' % (program_origin, parsed_program))
-        global_env = Environment()
+        global_env = GlobalEnvironment(name='__main__', file_path=program_origin)
         parsed_program.execute(global_env, None)
         logger.debug('Environment after execution: %s' % global_env)
     except (ParserErrors, ExecutionError) as p:
