@@ -581,24 +581,28 @@ class Parser:
             p[1].append_atom_node(p[3])
             p[0] = p[1]
 
-    # ## Subscript
+    # ## Index
 
     def p_atom_subscript(self, p):
         """
         atom_subscript : atom_expr '[' test ']' %prec Subscript
-                       | atom_expr '[' test ':' ']' %prec Subscript
-                       | atom_expr '[' ':' test ']' %prec Subscript
-                       | atom_expr '[' test ':' test ']' %prec Subscript
+                       | atom_expr '[' slice ']' %prec Subscript
         """
-        if len(p) == 5:
-            p[0] = BinOperationNode(op_name='subscript', magic_method='__getitem__', left=p[1], right=p[3])
-        elif len(p) == 6:
-            if p[4] == ':':
-                p[0] = SubscriptNode(p[1], lower=p[3])
-            else:
-                p[0] = SubscriptNode(p[1], upper=p[5])
-        else:
-            p[0] = SubscriptNode(p[1], lower=p[3], upper=p[5])
+        p[0] = SubscriptNode(container_node=p[1], subscript_node=p[3])
+
+    def p_atom_slicing(self, p):
+        """
+        slice : slice_atom ':' slice_atom ':' slice_atom
+              | slice_atom ':' slice_atom
+        """
+        p[0] = SliceNode(*p[1::2])
+
+    def p_slice_atom(self, p):
+        """
+        slice_atom : empty
+                   | test
+        """
+        p[0] = p[1] if p[1] != 'empty' else None
 
     # ## Function call
 

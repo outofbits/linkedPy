@@ -814,37 +814,51 @@ class ListNode(ASTNode):
 
 
 class SubscriptNode(ASTNode):
-    """ An abstract syntax tree node that creates a iterable list from the given node in the given range. """
+    """ This class presents a node that represents the subscription of container objects. """
 
-    def __init__(self, node, lower=None, upper=None, *args, **kwargs):
+    def __init__(self, container_node: ASTNode, subscript_node: ASTNode, *args, **kwargs):
         super(SubscriptNode, self).__init__(*args, **kwargs)
-        self.child.append(node)
-        self.child.append(lower)
-        self.child.append(upper)
+        self.child.append(container_node)
+        self.child.append(subscript_node)
 
     @property
-    def kid(self):
+    def container_node(self):
         return self.child[0]
 
     @property
-    def lower_bound(self):
+    def index_node(self):
+        return self.child[1]
+
+    def execute(self, environment: Environment, program_stack: ProgramStack):
+        container_value = self.container_node.execute(environment, program_stack).value
+        if container_value is None or not hasattr(container_value, '__getitem__'):
+            raise ITypeError('\'%s\' is not a container.' % container_value.__class__.__name__, program_stack)
+        index_value = self.index_node.execute(environment, program_stack).value
+        return ASTExecutionResult(ASTExecutionResultType.value_, container_value.__getitem__(index_value))
+
+
+class SliceNode(ASTNode):
+
+    def __init__(self, lower_node=None, upper_node=None, step_node=None, *args, **kwargs):
+        super(SliceNode, self).__init__(*args, **kwargs)
+        self.child.append(lower_node)
+        self.child.append(upper_node)
+        self.child.append(step_node)
+
+    @property
+    def lower_node(self):
+        return self.child[0]
+
+    @property
+    def upper_node(self):
         return self.child[1]
 
     @property
-    def upper_bound(self):
+    def step_node(self):
         return self.child[2]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
-        iter_object = self.child[0].execute(environment).value
-        lower = self.lower_bound.execute(environment, program_stack).value if self.lower_bound is not None else 0
-        upper = self.upper_bound.execute(environment, program_stack).value if self.upper_bound is not None else None
-        if upper is not None and upper < 0: upper = len(iter_object) - upper
-        result = list()
-        for index, x in enumerate(iter_object):
-            if index < lower:
-                continue
-            elif upper is not None and index > upper:
-                continue
-            else:
-                result.append(x)
-        return ASTExecutionResult(ASTExecutionResultType.value_, result)
+        lower = self.lower_node.execute(environment, program_stack).value if self.lower_node is not None else None
+        upper = self.upper_node.execute(environment, program_stack).value if self.upper_node is not None else None
+        step = self.step_node.execute(environment, program_stack).value if self.step_node is not None else None
+        return ASTExecutionResult(ASTExecutionResultType.value_, slice(lower, upper, step))
