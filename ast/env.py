@@ -1,5 +1,6 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
+import hashlib
 from .exception import TypeError as ITypeError
 from datatypes.linkedtypes import resource, triple, graph
 
@@ -223,8 +224,6 @@ class Environment(object):
 
 
 class GlobalEnvironment(Environment):
-    """ This class represents the global environment. """
-
     internal_functions = {
         'print': print,
         'len': len,
@@ -254,15 +253,34 @@ class GlobalEnvironment(Environment):
         for i_attribute in self.internal_attributes:
             self.insert_variable(name=i_attribute, type=Variable, value=self.internal_attributes[i_attribute])
 
+
 class ProgramContainer(object):
     """ This class contains the program data with additional information like the origin. """
 
     def __init__(self, program_string: str, origin: str = None):
         self.origin = origin
         self.program_string = program_string
+        self._hash = None
         self._p_container = dict()
+        self._p_line_counter = 0
         for line_no, line in enumerate(program_string.splitlines()):
             self._p_container[line_no + 1] = line
+            self._p_line_counter += 1
+
+    @property
+    def hash_digest(self) -> bytes:
+        if self._hash is None:
+            self._hash = bytes.fromhex(hashlib.sha224(str.encode(self.program_string, 'utf-8')).hexdigest())
+        return self._hash
+
+    def __hash__(self):
+        return hash(self.hash_digest)
+
+    def __len__(self):
+        return self._p_line_counter
+
+    def __setitem__(self, key, value):
+        raise ValueError('The %s is immutable.' % self.__class__.__name__)
 
     def __getitem__(self, item) -> str:
         if isinstance(item, slice):
