@@ -120,7 +120,7 @@ class Parser:
         function_parameters : '(' ')'
                             | '(' parameter_list  ')'
         """
-        p[0] = [] if len(p) == 3 else p[2]
+        p[0] = ParameterListNode() if len(p) == 3 else p[2]
 
     def p_parameter_list(self, p):
         """
@@ -128,9 +128,9 @@ class Parser:
                        | parameter_list ',' parameter
         """
         if len(p) == 2:
-            p[0] = [p[1]]
+            p[0] = ParameterListNode(p[1])
         else:
-            p[1].append(p[3])
+            p[1].insert_parameter(p[3])
             p[0] = p[1]
 
     def p_parameter(self, p):

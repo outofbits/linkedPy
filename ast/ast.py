@@ -52,7 +52,7 @@ class ASTNode(object):
         :param program_stack: the program stack that represents the course of the program execution.
         :return: the result of the execution.
         """
-        raise NotImplementedError('Execute-Method of %s not implemented !' % self.__class__.__name__)
+        raise NotImplementedError('Execute-Method of %s is not implemented !' % self.__class__.__name__)
 
     def __repr__(self) -> str:
         """
@@ -183,7 +183,7 @@ class FunctionNode(ASTNode):
         self.environment = environment
         total_parameters = dict()
         default_parameters = dict()
-        for index, parameter_node in enumerate(self.parameter_list):
+        for index, parameter_node in enumerate(self.parameter_list.execute(environment, program_stack).value):
             total_parameters[index] = parameter_node.parameter_name
             if parameter_node.default_expression is not None:
                 default_parameters[parameter_node.parameter_name] = parameter_node.default_expression
@@ -221,42 +221,23 @@ class ParameterNode(ASTNode):
 
 
 class ParameterListNode(ASTNode):
-    """ This class represents a list of parameters. """
-
     def __init__(self, parameter_node=None, *args, **kwargs):
         super(ParameterListNode, self).__init__(*args, **kwargs)
-        self.parameter_names = dict()
-        self.default_expression_parameters = dict()
-        self.index_count = 0
         if parameter_node is not None:
             self.insert_parameter(parameter_node)
-
-    @property
-    def total_parameters_count(self):
-        return self.index_count
-
-    @property
-    def fixed_parameters_count(self):
-        return self.total_parameters_count - len(self.default_expression_parameters)
 
     def insert_parameter(self, parameter_node: ParameterNode):
         """
         Inserts the given parameter into the parameter list node.
         :param parameter_node: the parameter node that shall be appended to the parameter list.
         """
-        self.parameter_names[self.index_count] = parameter_node.parameter_name
         self.child.append(parameter_node)
-        if parameter_node.default_expression is not None:
-            self.default_expression_parameters[parameter_node.parameter_name] = parameter_node.default_expression
-        self.index_count += 1
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
-        pass
+        return ASTExecutionResult(ASTExecutionResultType, self.children)
 
 
 class FunctionArgumentNode(ASTNode):
-    """ This class represents a function argument."""
-
     def __init__(self, arg_expr, name=None, *args, **kwargs):
         super(FunctionArgumentNode, self).__init__(*args, **kwargs)
         self.arg_expr = arg_expr
@@ -672,7 +653,6 @@ class NotOperationNode(UnaryBooleanOperationNode):
 
 class ConstantNode(ASTNode):
     def __init__(self, value, *args, **kwargs):
-        """ Initializes a constant node with the given value. """
         super(ConstantNode, self).__init__(*args, **kwargs)
         self.value = value
 
