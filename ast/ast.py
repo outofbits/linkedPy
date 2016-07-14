@@ -25,9 +25,17 @@ ASTExecutionResult = namedtuple('ASTExecutionResult', ['type', 'value'])
 ASTPrepareResult = namedtuple('ASTPrepareResult', ['type', 'value'])
 
 
-class ASTNode(object):
-    """ This class represents a node of an abstract syntax tree. """
+def merge_statements(stmt_block_1, stmt_block_2):
+    """
+    Merges both given statements block; the order stays the same.
+    :param stmt_block_1: the statement block that shall be merged with the other given statement block.
+    :param stmt_block_2: the statement block that shall be merged with the other given statement block.
+    :return: the result of the merge.
+    """
+    return StatementsBlockNode(stmt_block_1.children + stmt_block_2.children)
 
+
+class ASTNode(object):
     def __init__(self, peephole: ProgramPeephole = None):
         self.child = []
         self.peephole = peephole
@@ -71,10 +79,6 @@ class ASTLeftSideExpressionNode(object):
 
 
 class StatementsBlockNode(ASTNode):
-    """ This class represents an abstract syntax tree that hold a sequence of child nodes that shall be executed in the
-        given order.
-    """
-
     def __init__(self, statements=None, *args, **kwargs):
         super(StatementsBlockNode, self).__init__(*args, **kwargs)
         self.child += statements if statements is not None else []
@@ -82,16 +86,6 @@ class StatementsBlockNode(ASTNode):
     @property
     def empty(self):
         return bool(self.child)
-
-    @staticmethod
-    def merge(stmt_block_1, stmt_block_2) -> ASTNode:
-        """
-        Merges both given statements block; the order stays the same.
-        :param stmt_block_1: the statement block that shall be merged with the other given statement block.
-        :param stmt_block_2: the statement block that shall be merged with the other given statement block.
-        :return: the result of the merge.
-        """
-        return StatementsBlockNode(stmt_block_1.children + stmt_block_2.children)
 
     def append_statement(self, statement_node: ASTNode):
         """
@@ -838,7 +832,6 @@ class SubscriptNode(ASTNode):
 
 
 class SliceNode(ASTNode):
-
     def __init__(self, lower_node=None, upper_node=None, step_node=None, *args, **kwargs):
         super(SliceNode, self).__init__(*args, **kwargs)
         self.child.append(lower_node)

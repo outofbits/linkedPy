@@ -172,7 +172,7 @@ class Parser:
         if len(p) == 2:
             p[0] = StatementsBlockNode([p[1]])
         else:
-            p[0] = StatementsBlockNode.merge(p[1], p[2])
+            p[0] = merge_statements(p[1], p[2])
 
     def p_single_statement(self, p):
         """
@@ -274,7 +274,7 @@ class Parser:
         if len(p) == 2:
             p[0] = p[1]
         else:
-            p[0] = StatementsBlockNode.merge(p[1], p[2])
+            p[0] = merge_statements(p[1], p[2])
 
     # ## Compound Statement
 
@@ -394,8 +394,8 @@ class Parser:
         if p[2] in self.cmp_magic_methods_dic.keys():
             p[0] = ComparisonOperationNode(op_name=p[2], magic_method=self.cmp_magic_methods_dic[p[2]], left=p[1],
                                            right=p[3], peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
-        else:
-            p[0] = None
+        elif p[2] == 'in':
+            pass
 
     # ## Tests
 
