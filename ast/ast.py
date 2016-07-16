@@ -1,11 +1,11 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
-from .exception import ExecutionError, VariableError, InternalError, TypeError as ITypeError
+from .exception import VariableError, InternalError, TypeError as ITypeError
 from .env import Environment, Function, Variable, ProgramPeephole, ProgramStack
 from datatypes.linkedtypes import resource, triple, graph
 from abc import abstractmethod
 from enum import Enum
-from collections import namedtuple, deque
+from collections import namedtuple
 
 
 class ASTExecutionResultType(Enum):
@@ -37,12 +37,8 @@ def merge_statements(stmt_block_1, stmt_block_2):
 
 class ASTNode(object):
     def __init__(self, peephole: ProgramPeephole = None):
-        self.child = []
+        self.children = []
         self.peephole = peephole
-
-    @property
-    def children(self):
-        return self.child
 
     @abstractmethod
     def execute(self, environment: Environment, program_stack: ProgramStack) -> ASTExecutionResult:
@@ -61,7 +57,7 @@ class ASTNode(object):
         """
         return '(%s %s)' % (self.__class__.__name__,
                             ('[' + ','.join([repr(k) if k is not None else '(None)' for k in
-                                             self.child]) + ']') if self.child else  '')
+                                             self.children]) + ']') if self.children else  '')
 
 
 class ASTLeftSideExpressionNode(object):
@@ -81,34 +77,16 @@ class ASTLeftSideExpressionNode(object):
 class StatementsBlockNode(ASTNode):
     def __init__(self, statements=None, *args, **kwargs):
         super(StatementsBlockNode, self).__init__(*args, **kwargs)
-        self.child += statements if statements is not None else []
+        self.children += statements if statements is not None else []
 
     @property
-    def empty(self):
-        return bool(self.child)
+    def empty(self): return bool(self.children)
 
     def append_statement(self, statement_node: ASTNode):
-        """
-        Appends the given statement node at the end of the block.
-        :param statement_node: the statement node that shall be appended at the end of the statement block.
-        """
-        self.child.append(statement_node)
-
-    def insert_statement_at(self, statement_node: ASTNode, n: int = None):
-        """
-        Inserts the given statement node at the given position. If the given position n is None, the node will be
-        appended.
-        :param statement_node: the statement node that shall be inserted.
-        :param n: the position at which the statement node shall be inserted.
-        """
-        self.child.insert(n if n is not None else len(self.child), statement_node)
+        self.children.append(statement_node)
 
     def prepend_statement(self, statement_node: ASTNode):
-        """
-        Inserts the given statement at the beginning of the statement block.
-        :param statement_node: the statement node that shall be inserted at the beginning of the statement block.
-        """
-        self.child.insert(0, statement_node)
+        self.children.insert(0, statement_node)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         for statement in self.children:
@@ -123,16 +101,14 @@ class StatementsBlockNode(ASTNode):
 class VariableAssignmentNode(ASTNode):
     def __init__(self, var_expr, value_expr, *args, **kwargs):
         super(VariableAssignmentNode, self).__init__(*args, **kwargs)
-        self.child.append(var_expr)
-        self.child.append(value_expr)
+        self.children.append(var_expr)
+        self.children.append(value_expr)
 
     @property
-    def variable_expression(self):
-        return self.child[0]
+    def variable_expression(self): return self.children[0]
 
     @property
-    def value_expression(self):
-        return self.child[1]
+    def value_expression(self): return self.children[1]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         value_response = self.value_expression.execute(environment, program_stack)
@@ -154,17 +130,18 @@ class FunctionNode(ASTNode):
     def __init__(self, func_name: str, trunk: StatementsBlockNode, parameter_list=None, *args, **kwargs):
         super(FunctionNode, self).__init__(*args, **kwargs)
         self.environment = None
-        self.child.append(func_name)
-        self.child.append(trunk)
-        self.child.append(parameter_list)
+        self.children.append(func_name)
+        self.children.append(parameter_list)
+        self.children.append(trunk)
 
     @property
-    def function_name(self) -> str:
-        return self.child[0]
+    def function_name(self) -> str: return self.children[0]
 
     @property
-    def trunk(self) -> StatementsBlockNode:
-        return self.child[1]
+    def parameter_list(self): return self.children[1]
+
+    @property
+    def trunk(self) -> StatementsBlockNode: return self.children[2]
 
     @property
     def documentation(self) -> str:
@@ -174,10 +151,6 @@ class FunctionNode(ASTNode):
                 first_stmt_const = first_statement.value
                 return first_stmt_const if isinstance(first_stmt_const, str) else None
         return None
-
-    @property
-    def parameter_list(self):
-        return self.child[2]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         self.environment = environment
@@ -204,12 +177,14 @@ class FunctionNode(ASTNode):
 class ParameterNode(ASTNode):
     def __init__(self, parameter_name, default_expression, *args, **kwargs):
         super(ParameterNode, self).__init__(*args, **kwargs)
-        self.child.append(default_expression)
-        self.parameter_name = parameter_name
+        self.children.append(parameter_name)
+        self.children.append(default_expression)
 
     @property
-    def default_expression(self):
-        return self.child[0]
+    def parameter_name(self): return self.children[0]
+
+    @property
+    def default_expression(self): return self.children[1]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         pass
@@ -227,11 +202,7 @@ class ParameterListNode(ASTNode):
             self.insert_parameter(parameter_node)
 
     def insert_parameter(self, parameter_node: ParameterNode):
-        """
-        Inserts the given parameter into the parameter list node.
-        :param parameter_node: the parameter node that shall be appended to the parameter list.
-        """
-        self.child.append(parameter_node)
+        self.children.append(parameter_node)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         return ASTExecutionResult(ASTExecutionResultType, self.children)
@@ -240,8 +211,14 @@ class ParameterListNode(ASTNode):
 class FunctionArgumentNode(ASTNode):
     def __init__(self, arg_expr, name=None, *args, **kwargs):
         super(FunctionArgumentNode, self).__init__(*args, **kwargs)
-        self.arg_expr = arg_expr
-        self.name = name
+        self.children.append(arg_expr)
+        self.children.append(name)
+
+    @property
+    def argument_expression(self): return self.children[0]
+
+    @property
+    def name(self): return self.children[1]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         # The default expressions are executed by the called function node.
@@ -249,12 +226,10 @@ class FunctionArgumentNode(ASTNode):
 
     def __repr__(self):
         return '(%s %s %s)' % (
-            self.__class__.__name__, '%s =' % self.name if self.name is not None else '', self.arg_expr)
+            self.__class__.__name__, '%s =' % self.name if self.name is not None else '', self.argument_expression)
 
 
 class FunctionArgumentListNode(ASTNode):
-    """ This class represents a list of function arguments."""
-
     def __init__(self, func_arg: FunctionArgumentNode, *args, **kwargs):
         super(FunctionArgumentListNode, self).__init__(*args, **kwargs)
         self.fixed_arguments = list()
@@ -263,16 +238,13 @@ class FunctionArgumentListNode(ASTNode):
             self.insert_argument(func_arg)
 
     @property
-    def total_arguments_count(self):
-        return self.fixed_arguments_count + self.named_arguments_count
+    def total_arguments_count(self): return self.fixed_arguments_count + self.named_arguments_count
 
     @property
-    def fixed_arguments_count(self):
-        return len(self.fixed_arguments)
+    def fixed_arguments_count(self): return len(self.fixed_arguments)
 
     @property
-    def named_arguments_count(self):
-        return len(self.named_arguments)
+    def named_arguments_count(self): return len(self.named_arguments)
 
     def insert_argument(self, function_argument: FunctionArgumentNode):
         """
@@ -280,10 +252,10 @@ class FunctionArgumentListNode(ASTNode):
         :param function_argument: the argument node that shall be appended to this argument list.
         """
         if function_argument.name is None:
-            self.fixed_arguments.append(function_argument.arg_expr)
+            self.fixed_arguments.append(function_argument.argument_expression)
         else:
-            self.named_arguments[function_argument.name] = function_argument.arg_expr
-        self.child.append(function_argument)
+            self.named_arguments[function_argument.name] = function_argument.argument_expression
+        self.children.append(function_argument)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         pass
@@ -296,11 +268,7 @@ class TestListNode(ASTNode):
             self.append_test_node(test_node)
 
     def append_test_node(self, test_node: ASTNode):
-        """
-        Appends the given test node at the end of the list.
-        :param test_node: the test node that shall be appended at the end of the test list.
-        """
-        self.child.append(test_node)
+        self.children.append(test_node)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         value_list = list()
@@ -314,16 +282,14 @@ class FunctionCallNode(ASTNode):
 
     def __init__(self, left_side_expression, argument_list=None, *args, **kwargs):
         super(FunctionCallNode, self).__init__(*args, **kwargs)
-        self.child.append(left_side_expression)
-        self.child.append(argument_list)
+        self.children.append(left_side_expression)
+        self.children.append(argument_list)
 
     @property
-    def left_side_expression(self):
-        return self.child[0]
+    def left_side_expression(self): return self.children[0]
 
     @property
-    def argument_list(self):
-        return self.child[1]
+    def argument_list(self): return self.children[1]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         function = self.left_side_expression.execute(environment, program_stack).value
@@ -356,8 +322,6 @@ class FunctionCallNode(ASTNode):
 
 
 class PassNode(ASTNode):
-    """ This class represents pass node that does nothing. It is is used to indicate a statement. """
-
     def __init__(self, *args, **kwargs):
         super(PassNode, self).__init__(*args, **kwargs)
 
@@ -368,7 +332,7 @@ class PassNode(ASTNode):
 class PrintNode(ASTNode):
     def __init__(self, print_expression, *args, **kwargs):
         super(PrintNode, self).__init__(*args, **kwargs)
-        self.child.append(print_expression)
+        self.children.append(print_expression)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         print(self.children[0].execute(environment).value)
@@ -390,7 +354,6 @@ class ContinueNode(FlowControlNode):
     def __init__(self, *args, **kwargs):
         super(FlowControlNode, self).__init__(*args, **kwargs)
 
-    @abstractmethod
     def execute(self, environment: Environment, program_stack: ProgramStack):
         return ASTExecutionResult(ASTExecutionResultType.continue_, None)
 
@@ -399,7 +362,6 @@ class BreakNode(FlowControlNode):
     def __init__(self, *args, **kwargs):
         super(BreakNode, self).__init__(*args, **kwargs)
 
-    @abstractmethod
     def execute(self, environment: Environment, program_stack: ProgramStack):
         return ASTExecutionResult(ASTExecutionResultType.break_, None)
 
@@ -407,21 +369,18 @@ class BreakNode(FlowControlNode):
 class IfOperationNode(FlowControlNode):
     def __init__(self, test, true_branch, else_branch=None, *args, **kwargs):
         super(IfOperationNode, self).__init__(*args, **kwargs)
-        self.child.append(test)
-        self.child.append(true_branch)
-        self.child.append(else_branch)
+        self.children.append(test)
+        self.children.append(true_branch)
+        self.children.append(else_branch)
 
     @property
-    def test(self) -> ASTNode:
-        return self.child[0]
+    def test(self) -> ASTNode: return self.children[0]
 
     @property
-    def true_branch(self):
-        return self.child[1]
+    def true_branch(self): return self.children[1]
 
     @property
-    def else_branch(self) -> ASTNode:
-        return self.child[2]
+    def else_branch(self) -> ASTNode: return self.children[2]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         test_value = self.test.execute(environment, program_stack).value
@@ -440,21 +399,18 @@ class IfOperationNode(FlowControlNode):
 class WhileOperationNode(FlowControlNode):
     def __init__(self, test, trunk, else_branch=None, *args, **kwargs):
         super(WhileOperationNode, self).__init__(*args, **kwargs)
-        self.child.append(test)
-        self.child.append(trunk)
-        self.child.append(else_branch)
+        self.children.append(test)
+        self.children.append(trunk)
+        self.children.append(else_branch)
 
     @property
-    def test(self):
-        return self.child[0]
+    def test(self): return self.children[0]
 
     @property
-    def trunk(self):
-        return self.child[1]
+    def trunk(self): return self.children[1]
 
     @property
-    def else_branch(self):
-        return self.child[2]
+    def else_branch(self): return self.children[2]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         while True:
@@ -484,22 +440,22 @@ class ForOperationNode(ASTNode):
     def __init__(self, variable_name: str, iterable_node: ASTNode, trunk: ASTNode, else_branch: ASTNode = None, *args,
                  **kwargs):
         super(ForOperationNode, self).__init__(*args, **kwargs)
-        self.child.append(iterable_node)
-        self.child.append(trunk)
-        self.child.append(else_branch)
-        self.variable_name = variable_name
+        self.children.append(variable_name)
+        self.children.append(iterable_node)
+        self.children.append(trunk)
+        self.children.append(else_branch)
 
     @property
-    def iterable_node(self):
-        return self.child[0]
+    def variable_name(self): return self.children[0]
 
     @property
-    def trunk(self):
-        return self.child[1]
+    def iterable_node(self): return self.children[1]
 
     @property
-    def else_branch(self):
-        return self.child[2]
+    def trunk(self): return self.children[2]
+
+    @property
+    def else_branch(self): return self.children[3]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         local_env = Environment(environment)
@@ -524,11 +480,10 @@ class ForOperationNode(ASTNode):
 class ReturnNode(FlowControlNode):
     def __init__(self, return_expr=None, *args, **kwargs):
         super(ReturnNode, self).__init__(*args, **kwargs)
-        self.child.append(return_expr)
+        self.children.append(return_expr)
 
     @property
-    def return_expr(self):
-        return self.child[0]
+    def return_expr(self): return self.children[0]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         rtrn_value = self.return_expr.execute(environment,
@@ -542,8 +497,11 @@ class ReturnNode(FlowControlNode):
 class OperationNode(ASTNode):
     def __init__(self, op_name, magic_method, *args, **kwargs):
         super(OperationNode, self).__init__(*args, **kwargs)
-        self.op_name = op_name
-        self.magic_method = magic_method
+        self.children.append(magic_method)
+        self.operation_name = op_name
+
+    @property
+    def magic_method(self): return self.children[0]
 
     @abstractmethod
     def execute(self, environment: Environment, program_stack: ProgramStack):
@@ -560,16 +518,14 @@ class BinOperationNode(OperationNode):
         :param right: the right child of the binary operator.
         """
         super(BinOperationNode, self).__init__(op_name, magic_method, *args, **kwargs)
-        self.child.append(left)
-        self.child.append(right)
+        self.children.append(left)
+        self.children.append(right)
 
     @property
-    def left_operand(self):
-        return self.child[0]
+    def left_operand(self): return self.children[1]
 
     @property
-    def right_operand(self):
-        return self.child[1]
+    def right_operand(self): return self.children[2]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         left_operand = self.left_operand.execute(environment, program_stack).value
@@ -579,8 +535,9 @@ class BinOperationNode(OperationNode):
 
     def __repr__(self) -> str:
         return '(%s %s %s %s)' % (
-            self.__class__.__name__, repr(self.child[0]) if self.child[0] is not None else '(None)', self.op_name,
-            repr(self.child[1]) if self.child[1] is not None else '(None)')
+            self.__class__.__name__, repr(self.children[0]) if self.children[0] is not None else '(None)',
+            self.operation_name,
+            repr(self.children[1]) if self.children[1] is not None else '(None)')
 
 
 class ComparisonOperationNode(BinOperationNode):
@@ -622,11 +579,10 @@ class UnaryOperatorNode(OperationNode):
         :param node: the child of this operation node.
         """
         super(UnaryOperatorNode, self).__init__(op_name, magic_method, *args, **kwargs)
-        self.child.append(node)
+        self.children.append(node)
 
     @property
-    def kid(self):
-        return self.child[0]
+    def kid(self): return self.children[1]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         kid_value = self.kid.execute(environment, program_stack).value
@@ -634,7 +590,8 @@ class UnaryOperatorNode(OperationNode):
 
     def __repr__(self) -> str:
         return '(%s %s %s)' % (
-            self.__class__.__name__, self.op_name, repr(self.child[0]) if self.child[0] is not None else '(None)')
+            self.__class__.__name__, self.operation_name,
+            repr(self.children[0]) if self.children[0] is not None else '(None)')
 
 
 class UnaryBooleanOperationNode(UnaryOperatorNode):
@@ -654,7 +611,10 @@ class NotOperationNode(UnaryBooleanOperationNode):
 class ConstantNode(ASTNode):
     def __init__(self, value, *args, **kwargs):
         super(ConstantNode, self).__init__(*args, **kwargs)
-        self.value = value
+        self.children.append(value)
+
+    @property
+    def value(self): return self.children[0]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         return ASTExecutionResult(ASTExecutionResultType.value_, self.value)
@@ -747,7 +707,7 @@ class AtomListNode(ASTNode):
         Appends the given test node at the end of the list.
         :param atom_node: the test node that shall be appended at the end of the test list.
         """
-        self.child.append(atom_node)
+        self.children.append(atom_node)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         value_list = list()
@@ -759,11 +719,10 @@ class AtomListNode(ASTNode):
 class GraphNode(ASTNode):
     def __init__(self, graph_construction_node=None, *args, **kwargs):
         super(GraphNode, self).__init__(*args, **kwargs)
-        self.child.append(graph_construction_node)
+        self.children.append(graph_construction_node)
 
     @property
-    def construction_node(self):
-        return self.child[0]
+    def construction_node(self): return self.children[0]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         return ASTExecutionResult(ASTExecutionResultType.value_,
@@ -774,11 +733,10 @@ class GraphNode(ASTNode):
 class ListNode(ASTNode):
     def __init__(self, list_construction_node, *args, **kwargs):
         super(ListNode, self).__init__(*args, **kwargs)
-        self.child.append(list_construction_node)
+        self.children.append(list_construction_node)
 
     @property
-    def list_construction_node(self):
-        return self.child[0]
+    def list_construction_node(self): return self.children[0]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         if self.list_construction_node is None:
@@ -792,16 +750,16 @@ class SubscriptNode(ASTNode):
 
     def __init__(self, container_node: ASTNode, subscript_node: ASTNode, *args, **kwargs):
         super(SubscriptNode, self).__init__(*args, **kwargs)
-        self.child.append(container_node)
-        self.child.append(subscript_node)
+        self.children.append(container_node)
+        self.children.append(subscript_node)
 
     @property
     def container_node(self):
-        return self.child[0]
+        return self.children[0]
 
     @property
     def index_node(self):
-        return self.child[1]
+        return self.children[1]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         container_value = self.container_node.execute(environment, program_stack).value
@@ -814,21 +772,18 @@ class SubscriptNode(ASTNode):
 class SliceNode(ASTNode):
     def __init__(self, lower_node=None, upper_node=None, step_node=None, *args, **kwargs):
         super(SliceNode, self).__init__(*args, **kwargs)
-        self.child.append(lower_node)
-        self.child.append(upper_node)
-        self.child.append(step_node)
+        self.children.append(lower_node)
+        self.children.append(upper_node)
+        self.children.append(step_node)
 
     @property
-    def lower_node(self):
-        return self.child[0]
+    def lower_node(self): return self.children[0]
 
     @property
-    def upper_node(self):
-        return self.child[1]
+    def upper_node(self): return self.children[1]
 
     @property
-    def step_node(self):
-        return self.child[2]
+    def step_node(self): return self.children[2]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         lower = self.lower_node.execute(environment, program_stack).value if self.lower_node is not None else None
