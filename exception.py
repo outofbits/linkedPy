@@ -1,6 +1,4 @@
 class ExecutionError(Exception):
-    """ This class represents an exception that indicates an error during the execution of the abstract syntax tree."""
-
     def __init__(self, error_message: str, program_stack, *args, **kwargs):
         """ Initialize this ExecutionError with the given parameters.
 
@@ -34,21 +32,81 @@ class ExecutionError(Exception):
 
 
 class VariableError(ExecutionError):
-    """ This class represents an error that will be thrown, if a variable cannot be accessed. """
-
     def __init__(self, error_message: str, program_stack, *args, **kwargs):
         super(VariableError, self).__init__(error_message, program_stack, *args, **kwargs)
 
 
 class TypeError(ExecutionError):
-    """ This class represents an error that will be thrown if a operation cannot be carried out with the current type."""
-
     def __init__(self, error_message: str, program_stack, *args, **kwargs):
         super(TypeError, self).__init__(error_message, program_stack, *args, **kwargs)
 
 
 class InternalError(ExecutionError):
-    """ This class represents an error that wraps an error that has been thrown internally."""
-
     def __init__(self, exception: Exception, program_stack):
         super(InternalError, self).__init__(str(exception), program_stack)
+
+
+class ParserErrors(Exception):
+    def __init__(self, error_msg, parser_errors=None):
+        super(ParserErrors, self).__init__()
+        self.error_msg = error_msg
+        self.parser_errors = parser_errors
+
+    def message(self):
+        return '\n'.join([p.message() for p in self.parser_errors])
+
+
+class ParserError(Exception):
+    def __init__(self, *args, **kwargs):
+        super(ParserError, self).__init__(*args, **kwargs)
+
+
+class EOFParserError(ParserError):
+    def __init__(self, err_msg: str, *args, **kwargs):
+        super(EOFParserError, self).__init__(*args, **kwargs)
+        self.err_msg = err_msg
+
+    def message(self):
+        return '%s: %s' % (self.__class__.__name__, self.err_msg)
+
+
+class IndentationError(ParserError):
+    pass
+
+
+class SyntaxError(ParserError):
+    def __init__(self, err_msg: str, lexdata: str, lineno: int, lexpos: int, origin: str = None, *args, **kwargs):
+        """ Initialize this ParserException with the given parameters.
+
+        :param err_msg: the error message of the parser.
+        :param lexdata: the whole lexer data to show the line of the error.
+        :param lexpos: the lexer position, where the parser exception was detected.
+        :param linepos: the line position, where the parser exception was detected.
+        :param origin: the origin of the program code like a file name.
+        """
+        super(SyntaxError, self).__init__(*args, **kwargs)
+        self.origin = origin
+        self.err_msg = err_msg
+        self.lineno = lineno
+        self.linepos, self.line = SyntaxError._get_line(lexdata, lexpos)
+
+    @staticmethod
+    def _get_line(lexdata, lexpos: int) -> (int, str):
+        line = ''
+        c = lexdata[lexpos - 1]
+        off = 1
+        while c != '\n':
+            line += c
+            off += 1
+            c = lexdata[lexpos - off]
+        line = line[::-1]
+        n = 0
+        while lexdata[lexpos + n] != '\n':
+            line += lexdata[lexpos + n]
+            n += 1
+        return off, line
+
+    def message(self):
+        return '%sline %d\n\t%s\n\t%s\n%s: %s' % (
+            '%s in ' % self.origin if self.origin is not None else '', self.lineno, self.line,
+            '%s^' % (' ' * (self.linepos - 1)), self.__class__.__name__, self.err_msg)

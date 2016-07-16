@@ -1,8 +1,9 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
 import hashlib
-from .exception import TypeError as ITypeError
-from datatypes.linkedtypes import resource, triple, graph
+
+from exception import TypeError as ITypeError
+from linkedtypes import resource, triple, graph
 
 
 class _UnknownType(object):

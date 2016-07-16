@@ -3,7 +3,7 @@
 import copy
 from collections import deque
 from ply.lex import LexToken, Lexer
-from .exception import IndentationError
+from exception import IndentationError
 
 
 class LexerIndentationWrapper(object):

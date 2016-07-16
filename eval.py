@@ -7,7 +7,7 @@ import sys
 from env import GlobalEnvironment
 from env import ProgramContainer
 from exception import ExecutionError
-from parser.exception import ParserErrors
+from exception import ParserErrors
 from parser.parser import Parser
 
 logger = logging.getLogger(__name__)

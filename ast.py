@@ -1,11 +1,13 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
-from .exception import VariableError, InternalError, TypeError as ITypeError
-from .env import Environment, Function, Variable, ProgramPeephole, ProgramStack
-from datatypes.linkedtypes import resource, triple, graph
-from abc import abstractmethod
 from enum import Enum
+
+from abc import abstractmethod
 from collections import namedtuple
+
+from env import Environment, Function, Variable, ProgramPeephole, ProgramStack
+from exception import VariableError, InternalError, TypeError as ITypeError
+from linkedtypes import resource, triple, graph
 
 
 class ASTExecutionResultType(Enum):
@@ -80,7 +82,8 @@ class StatementsBlockNode(ASTNode):
         self.children += statements if statements is not None else []
 
     @property
-    def empty(self): return bool(self.children)
+    def empty(self):
+        return bool(self.children)
 
     def append_statement(self, statement_node: ASTNode):
         self.children.append(statement_node)
@@ -105,10 +108,12 @@ class VariableAssignmentNode(ASTNode):
         self.children.append(value_expr)
 
     @property
-    def variable_expression(self): return self.children[0]
+    def variable_expression(self):
+        return self.children[0]
 
     @property
-    def value_expression(self): return self.children[1]
+    def value_expression(self):
+        return self.children[1]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         value_response = self.value_expression.execute(environment, program_stack)
@@ -135,13 +140,16 @@ class FunctionNode(ASTNode):
         self.children.append(trunk)
 
     @property
-    def function_name(self) -> str: return self.children[0]
+    def function_name(self) -> str:
+        return self.children[0]
 
     @property
-    def parameter_list(self): return self.children[1]
+    def parameter_list(self):
+        return self.children[1]
 
     @property
-    def trunk(self) -> StatementsBlockNode: return self.children[2]
+    def trunk(self) -> StatementsBlockNode:
+        return self.children[2]
 
     @property
     def documentation(self) -> str:
@@ -238,13 +246,16 @@ class FunctionArgumentListNode(ASTNode):
             self.insert_argument(func_arg)
 
     @property
-    def total_arguments_count(self): return self.fixed_arguments_count + self.named_arguments_count
+    def total_arguments_count(self):
+        return self.fixed_arguments_count + self.named_arguments_count
 
     @property
-    def fixed_arguments_count(self): return len(self.fixed_arguments)
+    def fixed_arguments_count(self):
+        return len(self.fixed_arguments)
 
     @property
-    def named_arguments_count(self): return len(self.named_arguments)
+    def named_arguments_count(self):
+        return len(self.named_arguments)
 
     def insert_argument(self, function_argument: FunctionArgumentNode):
         """
@@ -286,10 +297,12 @@ class FunctionCallNode(ASTNode):
         self.children.append(argument_list)
 
     @property
-    def left_side_expression(self): return self.children[0]
+    def left_side_expression(self):
+        return self.children[0]
 
     @property
-    def argument_list(self): return self.children[1]
+    def argument_list(self):
+        return self.children[1]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         function = self.left_side_expression.execute(environment, program_stack).value
@@ -374,13 +387,16 @@ class IfOperationNode(FlowControlNode):
         self.children.append(else_branch)
 
     @property
-    def test(self) -> ASTNode: return self.children[0]
+    def test(self) -> ASTNode:
+        return self.children[0]
 
     @property
-    def true_branch(self): return self.children[1]
+    def true_branch(self):
+        return self.children[1]
 
     @property
-    def else_branch(self) -> ASTNode: return self.children[2]
+    def else_branch(self) -> ASTNode:
+        return self.children[2]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         test_value = self.test.execute(environment, program_stack).value
@@ -404,13 +420,16 @@ class WhileOperationNode(FlowControlNode):
         self.children.append(else_branch)
 
     @property
-    def test(self): return self.children[0]
+    def test(self):
+        return self.children[0]
 
     @property
-    def trunk(self): return self.children[1]
+    def trunk(self):
+        return self.children[1]
 
     @property
-    def else_branch(self): return self.children[2]
+    def else_branch(self):
+        return self.children[2]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         while True:
@@ -446,16 +465,20 @@ class ForOperationNode(ASTNode):
         self.children.append(else_branch)
 
     @property
-    def variable_name(self): return self.children[0]
+    def variable_name(self):
+        return self.children[0]
 
     @property
-    def iterable_node(self): return self.children[1]
+    def iterable_node(self):
+        return self.children[1]
 
     @property
-    def trunk(self): return self.children[2]
+    def trunk(self):
+        return self.children[2]
 
     @property
-    def else_branch(self): return self.children[3]
+    def else_branch(self):
+        return self.children[3]
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         local_env = Environment(environment)
@@ -621,6 +644,31 @@ class ConstantNode(ASTNode):
 
     def __repr__(self) -> str:
         return self.value.__repr__()
+
+
+class NoneNode(ConstantNode):
+    def __init__(self, value, *args, **kwargs):
+        super(NoneNode, self).__init__(value, *args, **kwargs)
+
+
+class TrueNode(ConstantNode):
+    def __init__(self, value, *args, **kwargs):
+        super(TrueNode, self).__init__(value, *args, **kwargs)
+
+
+class FalseNode(ConstantNode):
+    def __init__(self, value, *args, **kwargs):
+        super(FalseNode, self).__init__(value, *args, **kwargs)
+
+
+class NumberNode(ConstantNode):
+    def __init__(self, value, *args, **kwargs):
+        super(NumberNode, self).__init__(value, *args, **kwargs)
+
+
+class StringNode(ConstantNode):
+    def __init__(self, value, *args, **kwargs):
+        super(StringNode, self).__init__(value, *args, **kwargs)
 
 
 class VariableNode(ASTNode, ASTLeftSideExpressionNode):

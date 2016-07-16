@@ -1,10 +1,11 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
 import ply.yacc as yacc
+
+from env import ProgramContainer, ProgramPeephole
+from exception import SyntaxError, ParserErrors, EOFParserError
+from ast import *
 from .tokenizer import Tokenizer
-from .exception import SyntaxError, ParserErrors, EOFParserError
-from ast.ast import *
-from ast.env import ProgramContainer, ProgramPeephole
 
 
 class Parser:

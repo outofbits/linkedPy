@@ -5,7 +5,7 @@ import grammar.keyword as keyword
 import re
 import ply.lex as lex
 from .lexer_wrapper import LexerIndentationWrapper
-from .exception import SyntaxError
+from exception import SyntaxError
 from ply.lex import TOKEN, LexToken
 
 __author__ = 'Kevin Haller'
