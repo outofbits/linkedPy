@@ -1,23 +1,16 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
 import argparse
-import sys
 import logging
+import sys
 
-from parser.parser import Parser, ProgramStack
+from env import GlobalEnvironment
+from env import ProgramContainer
+from exception import ExecutionError
 from parser.exception import ParserErrors
-from ast.exception import ExecutionError
-from ast.env import GlobalEnvironment
-from ast.env import ProgramContainer
+from parser.parser import Parser
 
 logger = logging.getLogger(__name__)
-
-
-def evaluate_command_line():
-    """
-    Evaluates the linked py instructions entered on the command line.
-    """
-    # TODO: Implement
 
 
 def evaluate(program_String, program_origin='unknown'):
@@ -59,6 +52,6 @@ if __name__ == '__main__':
         logging.basicConfig(level=logging.DEBUG)
     # Path argument
     if not args.path:
-        evaluate_command_line()
+         pass # evaluate_command_line(), not implemented.
     else:
         evaluate_program_file(args.path)
