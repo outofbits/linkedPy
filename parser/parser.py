@@ -488,26 +488,26 @@ class Parser:
         """
         none : None
         """
-        p[0] = ConstantNode(None)
+        p[0] = NoneNode()
 
     def p_const_bool(self, p):
         """
         bool : True
              | False
         """
-        p[0] = ConstantNode(p[1] == 'True')
+        p[0] = TrueNode() if p[1] == 'True' else FalseNode()
 
     def p_const_number(self, p):
         """
         number :  NUMBER
         """
-        p[0] = ConstantNode(p[1])
+        p[0] = NumberNode(p[1])
 
     def p_str(self, p):
         """
         str : STRING
         """
-        p[0] = ConstantNode(p[1])
+        p[0] = StringNode(p[1])
 
     def p_resource(self, p):
         """

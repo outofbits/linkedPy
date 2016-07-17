@@ -3,7 +3,7 @@
 from enum import Enum
 
 from abc import abstractmethod
-from collections import namedtuple
+from collections import namedtuple, deque
 
 from env import Environment, Function, Variable, ProgramPeephole, ProgramStack
 from exception import VariableError, InternalError, TypeError as ITypeError
@@ -639,36 +639,138 @@ class ConstantNode(ASTNode):
     @property
     def value(self): return self.children[0]
 
+    @abstractmethod
+    def to_bytes(self):
+        """
+        Converts the given constant in dependence of their type to the corresponding byte array and returns this array.
+        :return: the byte array that results out of the conversion to bytes.
+        """
+        raise NotImplementedError('To-Byte-Method of %s is not implemented !' % self.__class__.__name__)
+
+    @staticmethod
+    @abstractmethod
+    def from_bytes(fd):
+        """
+        Converts the read-in bytes of the given file descriptor into the constant value given the corresponding type
+        of this node. If the read-in bytes does not fit the format of this constant, a ValueError is raised.
+        :param fd: file descriptor pointing to the bytes that shall be converted to a constant.
+        :return: the value corresponding to the given bytes array.
+        """
+        raise NotImplementedError('From-To-Method of %s is not implemented !' % self.__class__.__name__)
+
     def execute(self, environment: Environment, program_stack: ProgramStack):
         return ASTExecutionResult(ASTExecutionResultType.value_, self.value)
+
+    def __hash__(self):
+        return hash(self.value)
+
+    def __eq__(self, other):
+        return isinstance(other, ConstantNode) and self.value == other.value
 
     def __repr__(self) -> str:
         return self.value.__repr__()
 
 
 class NoneNode(ConstantNode):
-    def __init__(self, value, *args, **kwargs):
-        super(NoneNode, self).__init__(value, *args, **kwargs)
+    identifier = bytes([0x00, 0x0A])
+
+    def __init__(self, *args, **kwargs):
+        super(NoneNode, self).__init__(None, *args, **kwargs)
+
+    def to_bytes(self): return self.identifier
+
+    @staticmethod
+    def from_bytes(fd): return None
 
 
 class TrueNode(ConstantNode):
-    def __init__(self, value, *args, **kwargs):
-        super(TrueNode, self).__init__(value, *args, **kwargs)
+    identifier = bytes([0x00, 0x0B])
+
+    def __init__(self, *args, **kwargs):
+        super(TrueNode, self).__init__(True, *args, **kwargs)
+
+    def to_bytes(self): return self.identifier
+
+    @staticmethod
+    def from_bytes(fd): return True
 
 
 class FalseNode(ConstantNode):
-    def __init__(self, value, *args, **kwargs):
-        super(FalseNode, self).__init__(value, *args, **kwargs)
+    identifier = bytes([0x00, 0x0C])
+
+    def __init__(self, *args, **kwargs):
+        super(FalseNode, self).__init__(False, *args, **kwargs)
+
+    def to_bytes(self): return self.identifier
+
+    @staticmethod
+    def from_bytes(fd): return False
 
 
 class NumberNode(ConstantNode):
+    identifier = bytes([0x00, 0x0D])
+
     def __init__(self, value, *args, **kwargs):
         super(NumberNode, self).__init__(value, *args, **kwargs)
 
+    def to_bytes(self):
+        raw_int_queue = deque()
+        neg = (self.value < 0)
+        val = (abs(self.value) << 1) + neg
+        potential_prefix = set(range(256))
+        while True:
+            next_i_byte = val & 0xFF
+            raw_int_queue.appendleft(next_i_byte)
+            potential_prefix.remove(next_i_byte)
+            val >>= 16
+            if val == 0:
+                break
+        if not potential_prefix:
+            raise ValueError(
+                'Integer byte transformation failed due to the size of %d. It must be lower than 2^255.' % self.value)
+        prefix = potential_prefix.pop()
+        raw_int_queue.append(prefix)
+        raw_int_queue.appendleft(prefix)
+        # Construct integer byte.
+        integer_bytes = bytearray(self.identifier)
+        integer_bytes.extend(raw_int_queue)
+        return integer_bytes
+
+    @staticmethod
+    def from_bytes(fd):
+        int_bytes = bytearray()
+        prefix = fd.read(1)
+        next_b = fd.read(1)
+        while next_b != prefix:
+            int_bytes.extend(next_b)
+            next_b = fd.read(1)
+        value = int.from_bytes(int_bytes, byteorder='little')
+        positive = value % 2 == 0
+        value >>= 1
+        return value if positive else -value
+
 
 class StringNode(ConstantNode):
+    identifier = bytes([0x00, 0x0E])
+
     def __init__(self, value, *args, **kwargs):
         super(StringNode, self).__init__(value, *args, **kwargs)
+
+    def to_bytes(self):
+        str_bytes = bytearray(self.identifier)
+        str_bytes.extend(str.encode(self.value, 'utf-8'))
+        str_bytes.append(0x00)
+        return str_bytes
+
+    @staticmethod
+    def from_bytes(fd):
+        str_bytes = bytearray()
+        while True:
+            next_b = fd.read(1)
+            if next_b == bytes([0x00]):
+                break
+            str_bytes.extend(next_b)
+        return str_bytes.decode('utf-8')
 
 
 class VariableNode(ASTNode, ASTLeftSideExpressionNode):
