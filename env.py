@@ -1,9 +1,12 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
+import re
 import hashlib
 
 from exception import TypeError as ITypeError
 from linkedtypes import resource, triple, graph
+
+FILE_NAME_ENDING_REGEX = re.compile(r'(\..*)*$', re.UNICODE)
 
 
 class _UnknownType(object):
@@ -258,9 +261,20 @@ class GlobalEnvironment(Environment):
 class ProgramContainer(object):
     """ This class contains the program data with additional information like the origin. """
 
-    def __init__(self, program_string: str, origin: str = None):
-        self.origin = origin
+    def __init__(self, program_string: str, origin: str = None, program_dir: str = None,
+                 program_basename: str = None):
+        """
+        Initializes the program container.
+        :param program_string: the string of the program.
+        :param origin: the path to the program file that contains the given program string.
+        :param program_dir: the path to the directory containing the program file that contains the given program string.
+        :param program_basename: the name of the program file that contains the given program string.
+        """
         self.program_string = program_string
+        self.origin = origin
+        self.program_dir = program_dir
+        self.program_basename = program_basename
+        self.program_name = FILE_NAME_ENDING_REGEX.sub('', program_basename) if self.program_basename else None
         self._hash = None
         self._p_container = dict()
         self._p_line_counter = 0
@@ -273,12 +287,6 @@ class ProgramContainer(object):
         if self._hash is None:
             self._hash = bytes.fromhex(hashlib.sha224(str.encode(self.program_string, 'utf-8')).hexdigest())
         return self._hash
-
-    def __hash__(self):
-        return hash(self.hash_digest)
-
-    def __len__(self):
-        return self._p_line_counter
 
     def __setitem__(self, key, value):
         raise ValueError('The %s is immutable.' % self.__class__.__name__)
@@ -295,6 +303,12 @@ class ProgramContainer(object):
             return self._p_container[item]
         else:
             raise TypeError('The given type %s is inappropriate.' % item.__class__.__name__)
+
+    def __len__(self):
+        return self._p_line_counter
+
+    def __hash__(self):
+        return hash(self.hash_digest)
 
 
 class ProgramPeephole(object):

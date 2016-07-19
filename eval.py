@@ -3,6 +3,7 @@
 import argparse
 import logging
 import sys
+from os.path import abspath, basename, dirname
 
 from env import GlobalEnvironment
 from env import ProgramContainer
@@ -13,17 +14,15 @@ from parser.parser import Parser
 logger = logging.getLogger(__name__)
 
 
-def evaluate(program_String, program_origin='unknown'):
+def evaluate(program_container: ProgramContainer):
     """
-    Evaluates the given program string.
-    :param program_String: the string of the program that shall be evaluated.
-    :param program_origin: the origin of the program code like the file path.
+    Evaluates the given program.
+    :param program_container: the program container containing the program that shall be executed.
     """
-    program_container = ProgramContainer(origin=program_origin, program_string=program_String)
     try:
         parsed_program = Parser.parse(program_container)
-        logger.debug('Parsed AST for %s: %s' % (program_origin, parsed_program))
-        global_env = GlobalEnvironment(name='__main__', file_path=program_origin)
+        logger.debug('Parsed AST for %s: %s' % (program_container.origin, parsed_program))
+        global_env = GlobalEnvironment(name='__main__', file_path=program_container.origin)
         parsed_program.execute(global_env, None)
         logger.debug('Environment after execution: %s' % global_env)
     except (ParserErrors, ExecutionError) as p:
@@ -35,11 +34,14 @@ def evaluate_program_file(program_path):
     Evaluates the program that is contained in the file with the given path.
     :param program_path: the path to the linked python program that shall be executed.
     """
-    program = ''
     with open(program_path, 'r') as fp:
-        for line in fp:
-            program += line
-    evaluate(program, program_origin=program_path)
+        program = fp.read()
+    # Prepare the program container
+    program_path = abspath(program_path)
+    program_dir = dirname(program_path)
+    program_basename = basename(program_path)
+    evaluate(ProgramContainer(program_string=program, origin=program_path, program_dir=program_dir,
+                              program_basename=program_basename))
 
 
 if __name__ == '__main__':
@@ -52,6 +54,6 @@ if __name__ == '__main__':
         logging.basicConfig(level=logging.DEBUG)
     # Path argument
     if not args.path:
-         pass # evaluate_command_line(), not implemented.
+        pass  # evaluate_command_line(), not implemented.
     else:
         evaluate_program_file(args.path)
