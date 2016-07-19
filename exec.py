@@ -14,9 +14,9 @@ from parser.parser import Parser
 logger = logging.getLogger(__name__)
 
 
-def evaluate(program_container: ProgramContainer):
+def execute(program_container: ProgramContainer):
     """
-    Evaluates the given program.
+    Executes the given program.
     :param program_container: the program container containing the program that shall be executed.
     """
     try:
@@ -29,7 +29,7 @@ def evaluate(program_container: ProgramContainer):
         print(p.message(), file=sys.stderr)
 
 
-def evaluate_program_file(program_path):
+def execute_program_file(program_path):
     """
     Evaluates the program that is contained in the file with the given path.
     :param program_path: the path to the linked python program that shall be executed.
@@ -40,8 +40,8 @@ def evaluate_program_file(program_path):
     program_path = abspath(program_path)
     program_dir = dirname(program_path)
     program_basename = basename(program_path)
-    evaluate(ProgramContainer(program_string=program, origin=program_path, program_dir=program_dir,
-                              program_basename=program_basename))
+    execute(ProgramContainer(program_string=program, origin=program_path, program_dir=program_dir,
+                             program_basename=program_basename))
 
 
 if __name__ == '__main__':
@@ -56,4 +56,4 @@ if __name__ == '__main__':
     if not args.path:
         pass  # evaluate_command_line(), not implemented.
     else:
-        evaluate_program_file(args.path)
+        execute_program_file(args.path)
