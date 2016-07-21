@@ -23,6 +23,26 @@ ast_dispatch_map = {
 }
 
 
+class IntermediateCodeIO(object):
+    def __init__(self, intermediate_code: bytearray):
+        self.read_intermediate_code = deque()
+        self.intermediate_code_deque = deque(intermediate_code)
+
+    def read(self, length: int):
+        if length != -1 and length < 0:
+            raise ValueError('The length of read must be positive or -1.')
+        read_values = [self.intermediate_code_deque.popleft() for r in range(length)]
+        self.read_intermediate_code.extend(read_values)
+        return bytes(read_values)
+
+    def seek(self, offset: int, whence):
+        if whence == 1:
+            for x in range(abs(offset)):
+                self.intermediate_code_deque.appendleft(self.read_intermediate_code.pop())
+        else:
+            raise ValueError('Whence must be 1, other values are not supported.')
+
+
 class ConstantPool(object):
     constant_identifier_start = 0xC0
     identifier = bytes([constant_identifier_start])
@@ -153,33 +173,36 @@ def ast_tree_of_intermediate_code(program_container: ProgramContainer) -> ASTNod
     program_cache_file = join(program_container.program_dir, program_container.program_name + '.lpyc')
     if not exists(program_cache_file) or not isfile(program_cache_file):
         raise ByteCodeFileNotFound('Cache-File %s was not found !' % program_cache_file)
-    # Decode the cache file
-    with open(program_cache_file, 'rb') as cache_fd:
-        header = cache_fd.read(len(code_base_header))
-        # Checks the header of the cached file.
-        if code_base_header != header:
-            raise ByteCodeCorruptedError('The header of the cached file of the program \'%s\' is corrupted (%s).' % (
-                program_container.origin, header))
-        del header
-        # Compares the hash value of the given program and the hash value contained in the cached file.
-        cached_hash_digest = cache_fd.read(code_hash_length)
-        if cached_hash_digest != program_container.hash_digest:
-            raise ByteCodeCorruptedError(
-                'The hash value of the cached file \'%s\' differs from the given program (%s, %s)' % (
-                    program_container.origin, cached_hash_digest, program_container.hash_digest))
-        del cached_hash_digest
-        next_b = cache_fd.read(len(ConstantPool.identifier))
-        # Load in the constant pool at the begin of the cached file.
-        constant_pool = ConstantPool()
-        if ConstantPool.identifier == next_b:
-            constant_pool.construct_from_cache(cache_fd)
-            logger.debug('Read in constant pool from file \'%s\': %s' % (program_container.origin, constant_pool))
-        else:
-            raise ByteCodeCorruptedError('There is no constant pool for %s.' % program_container.origin)
-        # Restores the abstract syntax tree.
-        next_b = cache_fd.read(len(code_program_chapter))
-        if next_b != code_program_chapter:
-            raise ByteCodeCorruptedError(
-                'The program body of the cached file \'%s\' is corrupted.' % program_container.origin)
-        return byte_ast_dispatch[cache_fd.read(ASTNode.identifier_length)].construct_from_cache(cache_fd, constant_pool,
-                                                                                                program_container)
+    # Read in the byte code
+    with open(program_cache_file, 'rb') as cached_file:
+        intermediate_code_fd = IntermediateCodeIO(cached_file.read(-1))
+    # Decode the intermediate code
+    header = intermediate_code_fd.read(len(code_base_header))
+    # Checks the header of the cached file.
+    if code_base_header != header:
+        raise ByteCodeCorruptedError('The header of the cached file of the program \'%s\' is corrupted (%s).' % (
+            program_container.origin, header))
+    del header
+    # Compares the hash value of the given program and the hash value contained in the cached file.
+    cached_hash_digest = intermediate_code_fd.read(code_hash_length)
+    if cached_hash_digest != program_container.hash_digest:
+        raise ByteCodeCorruptedError(
+            'The hash value of the cached file \'%s\' differs from the given program (%s, %s)' % (
+                program_container.origin, cached_hash_digest, program_container.hash_digest))
+    del cached_hash_digest
+    next_b = intermediate_code_fd.read(len(ConstantPool.identifier))
+    # Load in the constant pool at the begin of the cached file.
+    constant_pool = ConstantPool()
+    if ConstantPool.identifier == next_b:
+        constant_pool.construct_from_cache(intermediate_code_fd)
+        logger.debug('Read in constant pool from file \'%s\': %s' % (program_container.origin, constant_pool))
+    else:
+        raise ByteCodeCorruptedError('There is no constant pool for %s.' % program_container.origin)
+    # Restores the abstract syntax tree.
+    next_b = intermediate_code_fd.read(len(code_program_chapter))
+    if next_b != code_program_chapter:
+        raise ByteCodeCorruptedError(
+            'The program body of the cached file \'%s\' is corrupted.' % program_container.origin)
+    return byte_ast_dispatch[intermediate_code_fd.read(ASTNode.identifier_length)].construct_from_cache(
+        intermediate_code_fd, constant_pool,
+        program_container)
