@@ -131,6 +131,11 @@ class ByteCodeCorruptedError(ByteCodeError):
         super(ByteCodeCorruptedError, self).__init__(error_message, *args, **kwargs)
 
 
+class ByteCodeOutdatedError(ByteCodeError):
+    def __init__(self, error_message: str, *args, **kwargs):
+        super(ByteCodeOutdatedError, self).__init__(error_message, *args, **kwargs)
+
+
 class ByteCodeConstantNotFound(ByteCodeError):
     def __init__(self, error_message: str, *args, **kwargs):
         super(ByteCodeConstantNotFound, self).__init__(error_message, *args, **kwargs)

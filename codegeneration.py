@@ -5,13 +5,14 @@ import logging
 from os.path import join, exists, isfile
 from collections import OrderedDict, deque
 from env import ProgramContainer
-from exception import ByteCodeConstantNotFound, ByteCodeFileNotFound, ByteCodeCorruptedError
+from exception import ByteCodeConstantNotFound, ByteCodeFileNotFound, ByteCodeCorruptedError, ByteCodeOutdatedError
 from ast import (ASTNode, NoneNode, FalseNode, TrueNode, NumberNode, StringNode, byte_ast_dispatch)
 
 logger = logging.getLogger(__name__)
 
 code_base_header = bytes([0xC0, 0xDE, 0xBA, 0x5E])
 code_program_chapter = bytes([0x04])
+code_version = bytes([0x01])
 code_hash_length = 28
 
 ast_dispatch_map = {
@@ -148,6 +149,7 @@ def generate_tree_based_intermediate_code(root: ASTNode, program_container: Prog
     program_trunk_byte = root.cache(constant_pool)
     # Concatenates the byte representation of the program.
     program_byte = bytearray(code_base_header)
+    program_byte.extend(code_version)
     program_byte.extend(program_container.hash_digest)
     program_byte.extend(constant_pool.cache())
     program_byte.extend(code_program_chapter)
@@ -180,9 +182,14 @@ def ast_tree_of_intermediate_code(program_container: ProgramContainer) -> ASTNod
     header = intermediate_code_fd.read(len(code_base_header))
     # Checks the header of the cached file.
     if code_base_header != header:
-        raise ByteCodeCorruptedError('The header of the cached file of the program \'%s\' is corrupted (%s).' % (
+        raise ByteCodeOutdatedError('The header of the cached file of the program \'%s\' is corrupted (%s).' % (
             program_container.origin, header))
     del header
+    # Checks the version.
+    bytecode_version = intermediate_code_fd.read(1)
+    if bytecode_version != code_version:
+        raise ByteCodeOutdatedError('The byte code (%d) has a lower version than the parser (%d).' % (
+            int.from_bytes(bytecode_version, byteorder='little'), int.from_bytes(code_version, byteorder='little')))
     # Compares the hash value of the given program and the hash value contained in the cached file.
     cached_hash_digest = intermediate_code_fd.read(code_hash_length)
     if cached_hash_digest != program_container.hash_digest:
