@@ -101,10 +101,10 @@ class Parser:
                    | file_input NEWLINE
         """
         if len(p) == 2:
-            p[0] = StatementsBlockNode([p[1]])
+            p[0] = p[1]
         else:
             if p[2] != '\n':
-                p[1].append_statement(p[2])
+                p[1] = merge_statements(p[1], p[2])
             p[0] = p[1]
 
     # # Function definition

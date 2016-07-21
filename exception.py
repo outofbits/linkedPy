@@ -110,3 +110,32 @@ class SyntaxError(ParserError):
         return '%sline %d\n\t%s\n\t%s\n%s: %s' % (
             '%s in ' % self.origin if self.origin is not None else '', self.lineno, self.line,
             '%s^' % (' ' * (self.linepos - 1)), self.__class__.__name__, self.err_msg)
+
+
+class ByteCodeError(Exception):
+    def __init__(self, error_message: str, *args, **kwargs):
+        super(ByteCodeError, self).__init__(error_message, *args, **kwargs)
+        self.error_message = error_message
+
+    def message(self):
+        return self.error_message
+
+
+class ByteCodeTransformationError(ByteCodeError):
+    def __init__(self, error_message: str, *args, **kwargs):
+        super(ByteCodeTransformationError, self).__init__(error_message, *args, **kwargs)
+
+
+class ByteCodeCorruptedError(ByteCodeError):
+    def __init__(self, error_message: str, *args, **kwargs):
+        super(ByteCodeCorruptedError, self).__init__(error_message, *args, **kwargs)
+
+
+class ByteCodeConstantNotFound(ByteCodeError):
+    def __init__(self, error_message: str, *args, **kwargs):
+        super(ByteCodeConstantNotFound, self).__init__(error_message, *args, **kwargs)
+
+
+class ByteCodeFileNotFound(ByteCodeError):
+    def __init__(self, error_message: str, *args, **kwargs):
+        super(ByteCodeFileNotFound, self).__init__(error_message, *args, **kwargs)

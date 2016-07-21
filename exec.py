@@ -1,15 +1,14 @@
 # COPYRIGHT (c) 2016 Kevin Haller <kevin.haller@outofbits.com>
 
+import sys
 import argparse
 import logging
-import sys
 from os.path import abspath, basename, dirname
 
-from env import GlobalEnvironment
-from env import ProgramContainer
-from exception import ExecutionError
-from exception import ParserErrors
+from env import GlobalEnvironment, ProgramContainer
+from exception import ExecutionError, ParserErrors, ByteCodeError
 from parser.parser import Parser
+from codegeneration import generate_tree_based_intermediate_code, ast_tree_of_intermediate_code
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,12 @@ def execute(program_container: ProgramContainer):
     :param program_container: the program container containing the program that shall be executed.
     """
     try:
-        parsed_program = Parser.parse(program_container)
+        try:
+            parsed_program = ast_tree_of_intermediate_code(program_container)
+        except ByteCodeError as b:
+            logger.error(b.message())
+            parsed_program = Parser.parse(program_container)
+            generate_tree_based_intermediate_code(parsed_program, program_container)
         logger.debug('Parsed AST for %s: %s' % (program_container.origin, parsed_program))
         global_env = GlobalEnvironment(name='__main__', file_path=program_container.origin)
         parsed_program.execute(global_env, None)
