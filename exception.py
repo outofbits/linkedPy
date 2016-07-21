@@ -112,35 +112,35 @@ class SyntaxError(ParserError):
             '%s^' % (' ' * (self.linepos - 1)), self.__class__.__name__, self.err_msg)
 
 
-class ByteCodeError(Exception):
+class IntermediateCodeError(Exception):
     def __init__(self, error_message: str, *args, **kwargs):
-        super(ByteCodeError, self).__init__(error_message, *args, **kwargs)
+        super(IntermediateCodeError, self).__init__(error_message, *args, **kwargs)
         self.error_message = error_message
 
     def message(self):
         return self.error_message
 
 
-class ByteCodeTransformationError(ByteCodeError):
+class IntermediateCodeTransformationError(IntermediateCodeError):
     def __init__(self, error_message: str, *args, **kwargs):
-        super(ByteCodeTransformationError, self).__init__(error_message, *args, **kwargs)
+        super(IntermediateCodeTransformationError, self).__init__(error_message, *args, **kwargs)
 
 
-class ByteCodeCorruptedError(ByteCodeError):
+class IntermediateCodeCorruptedError(IntermediateCodeError):
     def __init__(self, error_message: str, *args, **kwargs):
-        super(ByteCodeCorruptedError, self).__init__(error_message, *args, **kwargs)
+        super(IntermediateCodeCorruptedError, self).__init__(error_message, *args, **kwargs)
 
 
-class ByteCodeOutdatedError(ByteCodeError):
+class IntermediateCodeOutdatedError(IntermediateCodeError):
     def __init__(self, error_message: str, *args, **kwargs):
-        super(ByteCodeOutdatedError, self).__init__(error_message, *args, **kwargs)
+        super(IntermediateCodeOutdatedError, self).__init__(error_message, *args, **kwargs)
 
 
-class ByteCodeConstantNotFound(ByteCodeError):
+class IntermediateCodeConstantNotFound(IntermediateCodeError):
     def __init__(self, error_message: str, *args, **kwargs):
-        super(ByteCodeConstantNotFound, self).__init__(error_message, *args, **kwargs)
+        super(IntermediateCodeConstantNotFound, self).__init__(error_message, *args, **kwargs)
 
 
-class ByteCodeFileNotFound(ByteCodeError):
+class IntermediateCodeFileNotFound(IntermediateCodeError):
     def __init__(self, error_message: str, *args, **kwargs):
-        super(ByteCodeFileNotFound, self).__init__(error_message, *args, **kwargs)
+        super(IntermediateCodeFileNotFound, self).__init__(error_message, *args, **kwargs)

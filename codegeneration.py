@@ -5,7 +5,7 @@ import logging
 from os.path import join, exists, isfile
 from collections import OrderedDict, deque
 from env import ProgramContainer
-from exception import ByteCodeConstantNotFound, ByteCodeFileNotFound, ByteCodeCorruptedError, ByteCodeOutdatedError
+from exception import IntermediateCodeConstantNotFound, IntermediateCodeFileNotFound, IntermediateCodeCorruptedError, IntermediateCodeOutdatedError
 from ast import (ASTNode, NoneNode, FalseNode, TrueNode, NumberNode, StringNode, byte_ast_dispatch)
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ class ConstantPool(object):
         index = int.from_bytes(byte_code, byteorder='little')
         if index >= self._pool_counter:
             print('>> %s' % index)
-            raise ByteCodeConstantNotFound('%s was not found in the constant pool.' % byte_code)
+            raise IntermediateCodeConstantNotFound('%s was not found in the constant pool.' % byte_code)
         return self._constant_list[index]
 
     def constant_index_size(self, constant_header):
@@ -174,7 +174,7 @@ def ast_tree_of_intermediate_code(program_container: ProgramContainer) -> ASTNod
         raise ValueError('The program container has too less information for caching the program.')
     program_cache_file = join(program_container.program_dir, program_container.program_name + '.lpyc')
     if not exists(program_cache_file) or not isfile(program_cache_file):
-        raise ByteCodeFileNotFound('Cache-File %s was not found !' % program_cache_file)
+        raise IntermediateCodeFileNotFound('Cache-File %s was not found !' % program_cache_file)
     # Read in the byte code
     with open(program_cache_file, 'rb') as cached_file:
         intermediate_code_fd = IntermediateCodeIO(cached_file.read(-1))
@@ -182,18 +182,18 @@ def ast_tree_of_intermediate_code(program_container: ProgramContainer) -> ASTNod
     header = intermediate_code_fd.read(len(code_base_header))
     # Checks the header of the cached file.
     if code_base_header != header:
-        raise ByteCodeOutdatedError('The header of the cached file of the program \'%s\' is corrupted (%s).' % (
+        raise IntermediateCodeOutdatedError('The header of the cached file of the program \'%s\' is corrupted (%s).' % (
             program_container.origin, header))
     del header
     # Checks the version.
     bytecode_version = intermediate_code_fd.read(1)
     if bytecode_version != code_version:
-        raise ByteCodeOutdatedError('The byte code (%d) has a lower version than the parser (%d).' % (
+        raise IntermediateCodeOutdatedError('The byte code (%d) has a lower version than the parser (%d).' % (
             int.from_bytes(bytecode_version, byteorder='little'), int.from_bytes(code_version, byteorder='little')))
     # Compares the hash value of the given program and the hash value contained in the cached file.
     cached_hash_digest = intermediate_code_fd.read(code_hash_length)
     if cached_hash_digest != program_container.hash_digest:
-        raise ByteCodeCorruptedError(
+        raise IntermediateCodeCorruptedError(
             'The hash value of the cached file \'%s\' differs from the given program (%s, %s)' % (
                 program_container.origin, cached_hash_digest, program_container.hash_digest))
     del cached_hash_digest
@@ -204,11 +204,11 @@ def ast_tree_of_intermediate_code(program_container: ProgramContainer) -> ASTNod
         constant_pool.construct_from_cache(intermediate_code_fd)
         logger.debug('Read in constant pool from file \'%s\': %s' % (program_container.origin, constant_pool))
     else:
-        raise ByteCodeCorruptedError('There is no constant pool for %s.' % program_container.origin)
+        raise IntermediateCodeCorruptedError('There is no constant pool for %s.' % program_container.origin)
     # Restores the abstract syntax tree.
     next_b = intermediate_code_fd.read(len(code_program_chapter))
     if next_b != code_program_chapter:
-        raise ByteCodeCorruptedError(
+        raise IntermediateCodeCorruptedError(
             'The program body of the cached file \'%s\' is corrupted.' % program_container.origin)
     return byte_ast_dispatch[intermediate_code_fd.read(ASTNode.identifier_length)].construct_from_cache(
         intermediate_code_fd, constant_pool,

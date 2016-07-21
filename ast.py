@@ -4,7 +4,7 @@ from enum import Enum
 from abc import abstractmethod
 from collections import namedtuple, deque
 from env import Environment, Function, Variable, ProgramPeephole, ProgramStack
-from exception import (VariableError, InternalError, TypeError as ITypeError, ByteCodeCorruptedError)
+from exception import (VariableError, InternalError, TypeError as ITypeError, IntermediateCodeCorruptedError)
 from linkedtypes import resource, triple, graph
 
 byte_ast_dispatch = dict()
@@ -174,7 +174,7 @@ class StatementsBlockNode(ASTNode):
         next_b = fd.read(cls.identifier_length)
         while next_b and next_b != cls.byte_separator:
             if next_b not in byte_ast_dispatch:
-                raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+                raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
             statement_list.append(byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container))
             next_b = fd.read(cls.identifier_length)
         return StatementsBlockNode(statement_list)
@@ -230,11 +230,11 @@ class VariableAssignmentNode(ASTNode):
         peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         var_expr = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         value_expr = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         return VariableAssignmentNode(var_expr=var_expr, value_expr=value_expr, peephole=peephole)
 
@@ -306,7 +306,7 @@ class FunctionNode(ASTNode):
         if not next_b or next_b == cls.byte_separator:
             return FunctionNode(func_name=function_name, trunk=trunk, peephole=peephole)
         elif next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         else:
             parameter_list = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
             return FunctionNode(func_name=function_name, trunk=trunk, parameter_list=parameter_list, peephole=peephole)
@@ -374,7 +374,7 @@ class ParameterNode(ASTNode):
         if next_b == cls.byte_separator:
             return ParameterNode(parameter_name=parameter_name, peephole=peephole)
         elif next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         else:
             default_expr = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
             return ParameterNode(parameter_name=parameter_name, default_expression=default_expr, peephole=peephole)
@@ -417,7 +417,7 @@ class ParameterListNode(ASTNode):
         node = ParameterListNode()#peephole=peephole)
         while next_b != cls.byte_separator:
             if next_b not in byte_ast_dispatch:
-                raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+                raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
             node.insert_parameter(byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container))
             next_b = fd.read(cls.identifier_length)
         return node
@@ -455,13 +455,13 @@ class FunctionArgumentNode(ASTNode):
         peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         arg_expr = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b == cls.byte_separator:
             return FunctionArgumentNode(arg_expr=arg_expr, peephole=peephole)
         elif next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         else:
             length = constant_pool.constant_index_size(next_b)
             name = constant_pool.get(fd.read(length))
@@ -527,7 +527,7 @@ class FunctionArgumentListNode(ASTNode):
         function_node = FunctionArgumentListNode(peephole=peephole)
         while next_b != cls.byte_separator:
             if next_b not in byte_ast_dispatch:
-                raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+                raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
             function_node.insert_argument(
                 byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container))
             next_b = fd.read(cls.identifier_length)
@@ -565,7 +565,7 @@ class TestListNode(ASTNode):
         test_list_node = TestListNode(peephole=peephole)
         while next_b != cls.byte_separator:
             if next_b not in byte_ast_dispatch:
-                raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+                raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
             test_list_node.append_test_node(
                 byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container))
             next_b = fd.read(cls.identifier_length)
@@ -610,13 +610,13 @@ class FunctionCallNode(ASTNode):
         peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         left_side_expression = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b == cls.byte_separator:
             return FunctionCallNode(left_side_expression=left_side_expression, peephole=peephole)
         elif next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         else:
             argument_list = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
             return FunctionCallNode(left_side_expression=left_side_expression, argument_list=argument_list,
@@ -770,17 +770,17 @@ class IfOperationNode(FlowControlNode):
         peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         test = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         true_branch = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b == cls.byte_separator:
             return IfOperationNode(test=test, true_branch=true_branch, peephole=peephole)
         elif next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         else:
             else_branch = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
             return IfOperationNode(test=test, true_branch=true_branch, else_branch=else_branch, peephole=peephole)
@@ -838,16 +838,16 @@ class WhileOperationNode(FlowControlNode):
         peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         test = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         trunk = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         if next_b == cls.byte_separator:
             return WhileOperationNode(test=test, trunk=trunk, peephole=peephole)
         elif next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         else:
             else_branch = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
             return WhileOperationNode(test=test, trunk=trunk, else_branch=else_branch, peephole=peephole)
@@ -921,18 +921,18 @@ class ForOperationNode(ASTNode):
         variable_name = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         iterable_node = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         trunk = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b == cls.byte_separator:
             return ForOperationNode(variable_name=variable_name, iterable_node=iterable_node, trunk=trunk,
                                     peephole=peephole)
         elif next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         else:
             else_branch = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
             return ForOperationNode(variable_name=variable_name, iterable_node=iterable_node, trunk=trunk,
@@ -982,7 +982,7 @@ class ReturnNode(FlowControlNode):
         peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         return_expr = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         return ReturnNode(return_expr=return_expr, peephole=peephole)
 
@@ -1050,11 +1050,11 @@ class BinOperationNode(OperationNode):
         magic_method = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         left = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         right = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         return cls(op_name=magic_method, magic_method=magic_method, left=left, right=right, peephole=peephole)
 
@@ -1154,7 +1154,7 @@ class UnaryOperatorNode(OperationNode):
         magic_method = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
         next_b = fd.read(cls.identifier)
         if next_b not in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         kid = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         return UnaryOperatorNode(op_name=magic_method, magic_method=magic_method, kid=kid, peephole=peephole)
 
@@ -1198,7 +1198,7 @@ class NotOperationNode(UnaryBooleanOperationNode):
         peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier)
         if next_b in byte_ast_dispatch:
-            raise ByteCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
+            raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         kid = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         return NotOperationNode(kid=kid, peephole=peephole)
 

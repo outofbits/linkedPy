@@ -3,10 +3,10 @@
 import sys
 import argparse
 import logging
-from os.path import abspath, basename, dirname
 
+from os.path import abspath, basename, dirname
 from env import GlobalEnvironment, ProgramContainer
-from exception import ExecutionError, ParserErrors, ByteCodeError
+from exception import ExecutionError, ParserErrors, IntermediateCodeError
 from parser.parser import Parser
 from codegeneration import generate_tree_based_intermediate_code, ast_tree_of_intermediate_code
 
@@ -21,7 +21,7 @@ def execute(program_container: ProgramContainer):
     try:
         try:
             parsed_program = ast_tree_of_intermediate_code(program_container)
-        except ByteCodeError as b:
+        except IntermediateCodeError as b:
             logger.error(b.message())
             parsed_program = Parser.parse(program_container)
             generate_tree_based_intermediate_code(parsed_program, program_container)
@@ -56,6 +56,7 @@ if __name__ == '__main__':
     # Optional debug flag
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
+        DEBUG = True
     # Path argument
     if not args.path:
         pass  # evaluate_command_line(), not implemented.
