@@ -5,7 +5,8 @@ import logging
 from os.path import join, exists, isfile
 from collections import OrderedDict, deque
 from env import ProgramContainer
-from exception import IntermediateCodeConstantNotFound, IntermediateCodeFileNotFound, IntermediateCodeCorruptedError, IntermediateCodeOutdatedError
+from exception import (IntermediateCodeConstantNotFound, IntermediateCodeFileNotFound, IntermediateCodeCorruptedError,
+                       IntermediateCodeOutdatedError)
 from ast import (ASTNode, NoneNode, FalseNode, TrueNode, NumberNode, StringNode, byte_ast_dispatch)
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ ast_dispatch_map = {
 
 
 class IntermediateCodeIO(object):
-    def __init__(self, intermediate_code: bytearray):
+    def __init__(self, intermediate_code: bytes):
         self.read_intermediate_code = deque()
         self.intermediate_code_deque = deque(intermediate_code)
 
@@ -176,8 +177,11 @@ def ast_tree_of_intermediate_code(program_container: ProgramContainer) -> ASTNod
     if not exists(program_cache_file) or not isfile(program_cache_file):
         raise IntermediateCodeFileNotFound('Cache-File %s was not found !' % program_cache_file)
     # Read in the byte code
-    with open(program_cache_file, 'rb') as cached_file:
-        intermediate_code_fd = IntermediateCodeIO(cached_file.read(-1))
+    try:
+        with open(program_cache_file, 'rb') as cached_file:
+            intermediate_code_fd = IntermediateCodeIO(cached_file.read(-1))
+    except FileNotFoundError as f:
+        raise IntermediateCodeFileNotFound from f
     # Decode the intermediate code
     header = intermediate_code_fd.read(len(code_base_header))
     # Checks the header of the cached file.
@@ -197,7 +201,7 @@ def ast_tree_of_intermediate_code(program_container: ProgramContainer) -> ASTNod
             'The hash value of the cached file \'%s\' differs from the given program (%s, %s)' % (
                 program_container.origin, cached_hash_digest, program_container.hash_digest))
     del cached_hash_digest
-    next_b = intermediate_code_fd.read(len(ConstantPool.identifier))
+    next_b = intermediate_code_fd.read(ConstantPool.identifier_length)
     # Load in the constant pool at the begin of the cached file.
     constant_pool = ConstantPool()
     if ConstantPool.identifier == next_b:
