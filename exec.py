@@ -50,15 +50,12 @@ def execute_program_file(program_path):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Interpreter for LinkedPython.')
-    parser.add_argument('--path', '-p', type=str, help='a path to the linkedPy program that shall be interpreted.')
+    parser.add_argument('path', type=str, help='a path to the linkedPy program that shall be interpreted.')
     parser.add_argument('--debug', '-d', help='indicates that debug output shall be printed out.', action='store_true')
     args = parser.parse_args()
     # Optional debug flag
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
-        DEBUG = True
     # Path argument
-    if not args.path:
-        pass  # evaluate_command_line(), not implemented.
-    else:
+    if args.path:
         execute_program_file(args.path)
