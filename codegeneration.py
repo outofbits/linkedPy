@@ -33,6 +33,8 @@ class IntermediateCodeIO(object):
     def read(self, length: int):
         if length != -1 and length < 0:
             raise ValueError('The length of read must be positive or -1.')
+        if not self.intermediate_code_deque:
+            return None
         read_values = [self.intermediate_code_deque.popleft() for r in range(length)]
         self.read_intermediate_code.extend(read_values)
         return bytes(read_values)
@@ -43,6 +45,9 @@ class IntermediateCodeIO(object):
                 self.intermediate_code_deque.appendleft(self.read_intermediate_code.pop())
         else:
             raise ValueError('Whence must be 1, other values are not supported.')
+
+    def tell(self):
+        return len(self.read_intermediate_code)
 
 
 class ConstantPool(object):
@@ -79,9 +84,8 @@ class ConstantPool(object):
         :param byte_code: the byte code of the index of the constant that shall be returned.
         :return: the value of the constant that is represented by the given byte code.
         """
-        index = int.from_bytes(byte_code, byteorder='little')
+        index = int.from_bytes(reversed(byte_code), byteorder='little', signed=False)
         if index >= self._pool_counter:
-            print('>> %s' % index)
             raise IntermediateCodeConstantNotFound('%s was not found in the constant pool.' % byte_code)
         return self._constant_list[index]
 
@@ -91,7 +95,7 @@ class ConstantPool(object):
         :param constant_header: the header of the constant of which the size shall be returned.
         :return: the size of the constant index according to the constant header.
         """
-        return int.from_bytes(constant_header, byteorder='little') - self.constant_identifier_start
+        return int.from_bytes(reversed(constant_header), byteorder='little', signed=False) - self.constant_identifier_start
 
     def cache(self) -> bytearray:
         """
@@ -193,7 +197,8 @@ def ast_tree_of_intermediate_code(program_container: ProgramContainer) -> ASTNod
     bytecode_version = intermediate_code_fd.read(1)
     if bytecode_version != code_version:
         raise IntermediateCodeOutdatedError('The byte code (%d) has a lower version than the parser (%d).' % (
-            int.from_bytes(bytecode_version, byteorder='little'), int.from_bytes(code_version, byteorder='little')))
+            int.from_bytes(bytecode_version, byteorder='big', signed=False),
+            int.from_bytes(code_version, byteorder='big', signed=False)))
     # Compares the hash value of the given program and the hash value contained in the cached file.
     cached_hash_digest = intermediate_code_fd.read(code_hash_length)
     if cached_hash_digest != program_container.hash_digest:
