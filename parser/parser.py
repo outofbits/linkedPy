@@ -96,12 +96,16 @@ class Parser:
 
     def p_file_input(self, p):
         """
-        file_input : statement
+        file_input : NEWLINE
+                   | statement
                    | file_input statement
                    | file_input NEWLINE
         """
         if len(p) == 2:
-            p[0] = p[1]
+            if p[1] == '\n':
+                p[0] = StatementsBlockNode()
+            else:
+                p[0] = p[1]
         else:
             if p[2] != '\n':
                 p[1] = merge_statements(p[1], p[2])
