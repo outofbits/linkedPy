@@ -35,9 +35,15 @@ class IntermediateCodeIO(object):
             raise ValueError('The length of read must be positive or -1.')
         if not self.intermediate_code_deque:
             return None
-        read_values = [self.intermediate_code_deque.popleft() for r in range(length)]
-        self.read_intermediate_code.extend(read_values)
-        return bytes(read_values)
+        if length == -1:
+            self.read_intermediate_code.extend(self.intermediate_code_deque)
+            read_values = self.intermediate_code_deque
+            self.intermediate_code_deque = deque()
+            return bytes(read_values)
+        else:
+            read_values = [self.intermediate_code_deque.popleft() for r in range(length)]
+            self.read_intermediate_code.extend(read_values)
+            return bytes(read_values)
 
     def seek(self, offset: int, whence):
         if whence == 1:
