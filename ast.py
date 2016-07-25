@@ -251,7 +251,7 @@ class AssignmentNode(ASTNode):
             try:
                 getattr(*var_response.value[:2])(*arguments)
             except Exception as e:
-                raise ITypeError('Type Error', program_stack=program_stack) from e
+                raise ITypeError(repr(e), program_stack=program_stack) from e
         return ASTExecutionResult(ASTExecutionResultType.void_, None)
 
     def __repr__(self) -> str:
@@ -1433,7 +1433,7 @@ class VariableNode(ASTNode, ASTLeftSideExpressionNode):
     def prepare(self, environment: Environment, program_stack: ProgramStack):
         variable = environment.get_variable(self.name)
         if variable is not None:
-            return ASTPrepareResult(ASTPrepareType.var_found_, (variable, '__set__'))
+            return ASTPrepareResult(ASTPrepareType.var_found_, (variable, '__set_value__'))
         else:
             return ASTPrepareResult(ASTPrepareType.var_not_found_, variable)
 
