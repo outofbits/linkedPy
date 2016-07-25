@@ -518,9 +518,10 @@ class Parser:
          resource : IRI
         """
         if p[1][1] is not None:
-            p[0] = ResourceNode(iri=p[1][2], prefix_name='base' if p[1][0] is None else p[1][0])
+            p[0] = ResourceNode(iri=p[1][2], prefix_name='base' if p[1][0] is None else p[1][0],
+                                peephole=self._create_peephole(p.lineno(1), p.lineno(1)))
         else:
-            p[0] = ResourceNode(iri=p[1][2])
+            p[0] = ResourceNode(iri=p[1][2], peephole=self._create_peephole(p.lineno(1), p.lineno(1)))
 
     def p_triple(self, p):
         """
@@ -593,7 +594,8 @@ class Parser:
         atom_subscript : atom_expr '[' test ']' %prec Subscript
                        | atom_expr '[' slice ']' %prec Subscript
         """
-        p[0] = SubscriptNode(container_node=p[1], subscript_node=p[3])
+        p[0] = SubscriptNode(container_node=p[1], subscript_node=p[3],
+                             peephole=self._create_peephole(p.lineno(1), len(p) - 1))
 
     def p_atom_slicing(self, p):
         """

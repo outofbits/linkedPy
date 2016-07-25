@@ -29,7 +29,8 @@ ASTPrepareResult = namedtuple('ASTPrepareResult', ['type', 'value'])
 
 class ASTNode(object):
     identifier_length = 1
-    byte_separator = bytes([0x00])
+    byte_separator = bytes(identifier_length)
+    # peephole
     no_peephole_bytes = bytes([0x06])
     single_line_peephole = bytes([0x07])
     peephole_bytes_length = len(single_line_peephole)
@@ -84,6 +85,7 @@ class ASTNode(object):
             return ProgramPeephole(program_container=program_container, start_line_no=single_line_no,
                                    end_line_no=single_line_no)
         else:
+            print(next_b, next_b == cls.single_line_peephole, fd.read(-1))
             fd.seek(-cls.peephole_bytes_length, 1)
             next_b = fd.read(constant_pool.identifier_length)
             start_line_no = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
@@ -290,7 +292,7 @@ class FunctionNode(ASTNode):
 
     def cache(self, constant_pool) -> bytearray:
         function_bytes = bytearray(self.identifier)
-        #       function_bytes.extend(self.cache_peephole(constant_pool))
+        function_bytes.extend(self.cache_peephole(constant_pool))
         function_bytes.extend(constant_pool.add(StringNode(self.function_name)))
         function_bytes.extend(self.trunk.cache(constant_pool))
         function_bytes.extend(
@@ -299,7 +301,7 @@ class FunctionNode(ASTNode):
 
     @classmethod
     def construct_from_cache(cls, fd, constant_pool, program_container):
-        #        peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
+        peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(constant_pool.identifier_length)
         # Read in function name
         function_name = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
@@ -309,13 +311,13 @@ class FunctionNode(ASTNode):
         # Parameter list
         next_b = fd.read(cls.identifier_length)
         if not next_b or next_b == cls.byte_separator:
-            return FunctionNode(func_name=function_name, trunk=trunk)  # , peephole=peephole)
+            return FunctionNode(func_name=function_name, trunk=trunk, peephole=peephole)
         elif next_b not in byte_ast_dispatch:
             raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         else:
             parameter_list = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
             return FunctionNode(func_name=function_name, trunk=trunk,
-                                parameter_list=parameter_list)  # , peephole=peephole)
+                                parameter_list=parameter_list, peephole=peephole)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         self.environment = environment
@@ -915,6 +917,7 @@ class ForOperationNode(ASTNode):
 
     def cache(self, constant_pool) -> bytearray:
         for_operation_bytes = bytearray(self.identifier)
+        for_operation_bytes.extend(self.cache_peephole(constant_pool))
         for_operation_bytes.extend(constant_pool.add(StringNode(self.variable_name)))
         for_operation_bytes.extend(self.iterable_node.cache(constant_pool))
         for_operation_bytes.extend(self.trunk.cache(constant_pool))
@@ -924,7 +927,7 @@ class ForOperationNode(ASTNode):
 
     @classmethod
     def construct_from_cache(cls, fd, constant_pool, program_container):
-        # peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
+        peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         variable_name = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
         next_b = fd.read(cls.identifier_length)
@@ -937,14 +940,14 @@ class ForOperationNode(ASTNode):
         trunk = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         if next_b == cls.byte_separator:
-            return ForOperationNode(variable_name=variable_name, iterable_node=iterable_node, trunk=trunk)  # ,
-            # peephole=peephole)
+            return ForOperationNode(variable_name=variable_name, iterable_node=iterable_node, trunk=trunk,
+                                    peephole=peephole)
         elif next_b not in byte_ast_dispatch:
             raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         else:
             else_branch = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
             return ForOperationNode(variable_name=variable_name, iterable_node=iterable_node, trunk=trunk,
-                                    else_branch=else_branch)  # , peephole=peephole)
+                                    else_branch=else_branch, peephole=peephole)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         local_env = Environment(environment)
@@ -1045,7 +1048,7 @@ class BinOperationNode(OperationNode):
 
     def cache(self, constant_pool) -> bytearray:
         bin_operation_bytes = bytearray(self.identifier)
-        #        bin_operation_bytes.extend(self.cache_peephole(constant_pool))
+        bin_operation_bytes.extend(self.cache_peephole(constant_pool))
         bin_operation_bytes.extend(constant_pool.add(StringNode(self.magic_method)))
         bin_operation_bytes.extend(self.left_operand.cache(constant_pool))
         bin_operation_bytes.extend(self.right_operand.cache(constant_pool))
@@ -1053,7 +1056,7 @@ class BinOperationNode(OperationNode):
 
     @classmethod
     def construct_from_cache(cls, fd, constant_pool, program_container):
-        #       peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
+        peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
         magic_method = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
         next_b = fd.read(cls.identifier_length)
@@ -1064,7 +1067,7 @@ class BinOperationNode(OperationNode):
         if next_b not in byte_ast_dispatch:
             raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         right = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
-        return cls(op_name=magic_method, magic_method=magic_method, left=left, right=right)  # , peephole=peephole)
+        return cls(op_name=magic_method, magic_method=magic_method, left=left, right=right, peephole=peephole)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         left_operand = self.left_operand.execute(environment, program_stack).value
@@ -1469,12 +1472,19 @@ class PrefixNode(ASTNode):
 
     def cache(self, constant_pool) -> bytearray:
         prefix_bytes = bytearray(self.identifier)
+        prefix_bytes.extend(self.cache_peephole(constant_pool))
         prefix_bytes.extend(constant_pool.add(self.name))
+        prefix_bytes.extend(constant_pool.add(self.iri))
         return prefix_bytes
 
     @classmethod
     def construct_from_cache(cls, fd, constant_pool, program_container):
-        pass
+        peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
+        next_b = fd.read(cls.identifier_length)
+        name = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
+        next_b = fd.read(cls.identifier_length)
+        iri = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
+        return PrefixNode(name=name, iri=iri, peephole=peephole)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         if self.name is not None:
@@ -1498,19 +1508,21 @@ class ResourceNode(ASTNode):
 
     def cache(self, constant_pool) -> bytearray:
         resource_bytes = bytearray(self.identifier)
+        resource_bytes.extend(self.cache_peephole(constant_pool))
         resource_bytes.extend(constant_pool.add(self.iri))
         resource_bytes.extend(self.byte_separator if self.iri is None else constant_pool.add(self.prefix_name))
         return resource_bytes
 
     @classmethod
     def construct_from_cache(cls, fd, constant_pool, program_container):
+        peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier)
         iri = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
         if next_b == cls.byte_separator:
             return ResourceNode(iri=iri)
         next_b = fd.read(cls.identifier)
         prefix_name = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
-        return ResourceNode(iri=iri, prefix_name=prefix_name)
+        return ResourceNode(iri=iri, prefix_name=prefix_name, peephole=peephole)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         pref = ''
