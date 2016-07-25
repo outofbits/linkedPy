@@ -19,8 +19,8 @@ class ASTExecutionResultType(Enum):
 
 
 class ASTPrepareType(Enum):
-    accessible_ = 1
-    not_found_ = 2
+    var_found_ = 1
+    var_not_found_ = 2
 
 
 ASTExecutionResult = namedtuple('ASTExecutionResult', ['type', 'value'])
@@ -202,11 +202,11 @@ def merge_statements(stmt_block_1: StatementsBlockNode, stmt_block_2: Statements
     return StatementsBlockNode(stmt_block_1.children + stmt_block_2.children)
 
 
-class VariableAssignmentNode(ASTNode):
+class AssignmentNode(ASTNode):
     identifier = bytes([0x11])
 
     def __init__(self, var_expr, value_expr, *args, **kwargs):
-        super(VariableAssignmentNode, self).__init__(*args, **kwargs)
+        super(AssignmentNode, self).__init__(*args, **kwargs)
         self.children.append(var_expr)
         self.children.append(value_expr)
 
@@ -236,15 +236,20 @@ class VariableAssignmentNode(ASTNode):
         if next_b not in byte_ast_dispatch:
             raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         value_expr = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
-        return VariableAssignmentNode(var_expr=var_expr, value_expr=value_expr, peephole=peephole)
+        return AssignmentNode(var_expr=var_expr, value_expr=value_expr, peephole=peephole)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         value_response = self.value_expression.execute(environment, program_stack)
         var_response = self.variable_expression.prepare(environment, program_stack)
-        if var_response.type == ASTPrepareType.not_found_:
+        if var_response.type == ASTPrepareType.var_not_found_:
             environment.insert_variable(name=self.variable_expression.name, type=Variable, value=value_response.value)
         else:
-            var_response.value.change_value(value_response.value)
+            arguments = list(var_response.value[2:])
+            arguments.append(value_response.value)
+            try:
+                getattr(*var_response.value[:2])(*arguments)
+            except Exception as e:
+                raise ITypeError('Type Error', program_stack=program_stack) from e
         return ASTExecutionResult(ASTExecutionResultType.void_, None)
 
     def __repr__(self) -> str:
@@ -252,7 +257,7 @@ class VariableAssignmentNode(ASTNode):
             self.__class__.__name__, repr(self.variable_expression), repr(self.value_expression))
 
 
-byte_ast_dispatch[VariableAssignmentNode.identifier] = VariableAssignmentNode
+byte_ast_dispatch[AssignmentNode.identifier] = AssignmentNode
 
 
 class FunctionNode(ASTNode):
@@ -1423,9 +1428,11 @@ class VariableNode(ASTNode, ASTLeftSideExpressionNode):
         self.name = name
 
     def prepare(self, environment: Environment, program_stack: ProgramStack):
-        var_description = environment.get_variable(self.name)
-        return ASTExecutionResult(
-            ASTPrepareType.accessible_ if var_description is not None else ASTPrepareType.not_found_, var_description)
+        variable = environment.get_variable(self.name)
+        if variable is not None:
+            return ASTPrepareResult(ASTPrepareType.var_found_, (variable, '__set__'))
+        else:
+            return ASTPrepareResult(ASTPrepareType.var_not_found_, variable)
 
     def cache(self, constant_pool) -> bytearray:
         var_bytes = bytearray(self.identifier)
@@ -1439,11 +1446,11 @@ class VariableNode(ASTNode, ASTLeftSideExpressionNode):
         return VariableNode(name=name)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
-        var_description = self.prepare(environment, program_stack)
-        if var_description.type == ASTPrepareType.not_found_:
+        variable = self.prepare(environment, program_stack)
+        if variable.type == ASTPrepareType.var_not_found_:
             raise VariableError(error_message='Variable \'%s\' was not defined before.' % self.name,
                                 program_stack=program_stack)
-        return ASTExecutionResult(ASTExecutionResultType.value_, (var_description.value).value)
+        return ASTExecutionResult(ASTExecutionResultType.value_, (variable.value)[0].value)
 
     def __repr__(self) -> str:
         return '(Variable %s)' % repr(self.name)
@@ -1476,6 +1483,7 @@ class PrefixNode(ASTNode):
 
     def __repr__(self):
         return '(%s %s : %s)' % (self.__class__.__name__, self.name, self.iri)
+
 
 byte_ast_dispatch[PrefixNode.identifier] = PrefixNode
 
@@ -1516,6 +1524,7 @@ class ResourceNode(ASTNode):
         return '(%s < %s >)' % (
             self.__class__.__name__,
             '%s : %s' % (self.prefix_name, self.iri) if self.prefix_name is not None else self.iri)
+
 
 byte_ast_dispatch[ResourceNode.identifier] = ResourceNode
 
@@ -1572,6 +1581,7 @@ class TripleNode(ASTNode):
     def __repr__(self):
         return '(%s %s %s)' % (self.subject, self.predicate, self.object)
 
+
 byte_ast_dispatch[TripleNode.identifier] = TripleNode
 
 
@@ -1615,6 +1625,7 @@ class AtomListNode(ASTNode):
             value_list.append(atom_node.execute(environment).value)
         return ASTExecutionResult(ASTExecutionResultType.value_, value_list)
 
+
 byte_ast_dispatch[AtomListNode.identifier] = AtomListNode
 
 
@@ -1651,6 +1662,7 @@ class GraphNode(ASTNode):
         return ASTExecutionResult(ASTExecutionResultType.value_,
                                   graph(self.construction_node.execute(
                                       environment).value) if self.construction_node is not None else graph())
+
 
 byte_ast_dispatch[GraphNode.identifier] = GraphNode
 
@@ -1695,8 +1707,9 @@ class ListNode(ASTNode):
 byte_ast_dispatch[ListNode.identifier] = ListNode
 
 
-class SubscriptNode(ASTNode):
+class SubscriptNode(ASTNode, ASTLeftSideExpressionNode):
     """ This class presents a node that represents the subscription of container objects. """
+
     identifier = bytes([0x2F])
 
     def __init__(self, container_node: ASTNode, subscript_node: ASTNode, *args, **kwargs):
@@ -1729,6 +1742,13 @@ class SubscriptNode(ASTNode):
             raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         subscript_node = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         return SubscriptNode(container_node=container_node, subscript_node=subscript_node)
+
+    def prepare(self, environment: Environment, program_stack: ProgramStack) -> ASTPrepareResult:
+        container_value = self.container_node.execute(environment, program_stack).value
+        if container_value is None or not hasattr(container_value, '__getitem__'):
+            raise ITypeError('\'%s\' is not a container.' % container_value.__class__.__name__, program_stack)
+        index_value = self.subscript_node.execute(environment, program_stack).value
+        return ASTPrepareResult(ASTPrepareType.var_found_, (container_value, '__setitem__', index_value))
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         container_value = self.container_node.execute(environment, program_stack).value

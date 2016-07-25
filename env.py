@@ -140,12 +140,12 @@ class Variable(object):
         self.type = type
         self.value = value
 
-    def change_value(self, value, type=_UnknownType):
+    def __set_value__(self, value, type=_UnknownType):
         """
-        Changes the value of this variable and the type. If no new type is given, the default type Unknown will be
-        stored.
-        :param value: the new value of the variable.
-        :param type: the new type of the variable.
+        Sets the value of the variable as well as the type of the variable. The type is optional and _UnknownType is the
+        default.
+        :param value: the value that the variable should have.
+        :param type: the type that the value of the variable has.
         """
         self.value = value
         self.type = type

@@ -206,12 +206,12 @@ class Parser:
                          | test FLOORDIVIDEQUAL test
         """
         if p[2] == '=':
-            p[0] = VariableAssignmentNode(p[1], p[3], peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
+            p[0] = AssignmentNode(p[1], p[3], peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
         else:
-            p[0] = VariableAssignmentNode(p[1], BinOperationNode(op_name=p[2],
-                                                                 magic_method=self.assign_binop_magic_methods_dic[p[2]],
-                                                                 left=p[1], right=p[3]),
-                                          peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
+            p[0] = AssignmentNode(p[1], BinOperationNode(op_name=p[2],
+                                                         magic_method=self.assign_binop_magic_methods_dic[p[2]],
+                                                         left=p[1], right=p[3]),
+                                  peephole=self._create_peephole(p.lineno(1), p.lineno(3)))
 
     def p_pass_statement(self, p):
         """
