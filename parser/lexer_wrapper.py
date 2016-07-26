@@ -19,7 +19,8 @@ class LexerIndentationWrapper(object):
         """
         self.wrapped_lexer = wrapped_lexer
         self._wrap_lex_ind_queue = [0]  # Internal queue to store the space number of the indentation levels.
-        self._wrap_lex_token_queue = deque()  #
+        self._wrap_lex_token_queue = deque()
+        self._wrap_lex_last_token = None  # For handling EOF without a preceding NEWLINE.
 
     def _count_leading_whitespaces(self, token: LexToken) -> int:
         """
@@ -67,6 +68,18 @@ class LexerIndentationWrapper(object):
         copied_token.value = new_value
         return copied_token
 
+    def _new_token(self, new_type, new_value, lineno: int, lexpos: int):
+        """
+        Creates a new token with the given data.
+        :return: new token with the given data.
+        """
+        token = LexToken()
+        token.type = new_type
+        token.value = new_value
+        token.lineno = lineno
+        token.lexpos = lexpos
+        return token
+
     def input(self, string: str):
         """
         Delegates the given string to the input() - method of the lexer.
@@ -81,10 +94,14 @@ class LexerIndentationWrapper(object):
         :return: the next token.
         """
         if self._wrap_lex_token_queue:
-            return self._wrap_lex_token_queue.pop()
+            self._wrap_lex_last_token = self._wrap_lex_token_queue.pop()
+            return self._wrap_lex_last_token
         token = self.wrapped_lexer.token()
         if token is None:
             self._wrap_lex_token_queue.append(None)
+            if self._wrap_lex_last_token is not None and self._wrap_lex_last_token.type != 'NEWLINE':
+                self._wrap_lex_token_queue.append(self._new_token('NEWLINE', '\n', self.wrapped_lexer.lineno,
+                                                                  self.wrapped_lexer.lexpos))
             while self._wrap_lex_ind_queue[-1] != 0:
                 self._wrap_lex_ind_queue.pop()
                 self._wrap_lex_token_queue.append(self._new_token('DEDENT', self._wrap_lex_ind_queue[-1]))
@@ -101,6 +118,7 @@ class LexerIndentationWrapper(object):
                 if indent_c != self._wrap_lex_ind_queue[-1]:
                     raise IndentationError(err_msg="Indentation error.", lineno=token.lineno, lexpos=token.lexpos,
                                            lexdata=token.lexer.lexdata)
+        self._wrap_lex_last_token = token
         return token
 
     def __setattr__(self, key, value):
