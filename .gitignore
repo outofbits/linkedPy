@@ -2,6 +2,10 @@
 
 .gitignore
 
+### LinkedPy intermediate code
+
+*.lpyc
+
 ### Python
 
 # Byte-compiled / optimized / DLL files
@@ -101,3 +105,4 @@ ENV/
 parsetab.py
 parser.out
 lextab.py
+
