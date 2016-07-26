@@ -46,6 +46,11 @@ class InternalError(ExecutionError):
         super(InternalError, self).__init__(str(exception), program_stack)
 
 
+class PrefixError(ExecutionError):
+    def __init__(self, error_message: str, program_stack, *args, **kwargs):
+        super(PrefixError, self).__init__(error_message, program_stack, *args, **kwargs)
+
+
 class ParserErrors(Exception):
     def __init__(self, error_msg, parser_errors=None):
         super(ParserErrors, self).__init__()
@@ -144,3 +149,8 @@ class IntermediateCodeConstantNotFound(IntermediateCodeError):
 class IntermediateCodeFileNotFound(IntermediateCodeError):
     def __init__(self, error_message: str, *args, **kwargs):
         super(IntermediateCodeFileNotFound, self).__init__(error_message, *args, **kwargs)
+
+
+class IntermediateCodeLimitationError(object):
+    def __init__(self, error_message: str, *args, **kwargs):
+        super(IntermediateCodeLimitationError, self).__init__(error_message, *args, **kwargs)

@@ -4,7 +4,8 @@ from enum import Enum
 from abc import abstractmethod
 from collections import namedtuple, deque
 from env import Environment, Function, Variable, ProgramPeephole, ProgramStack
-from exception import (VariableError, InternalError, TypeError as ITypeError, IntermediateCodeCorruptedError)
+from exception import (VariableError, InternalError, TypeError as ITypeError, IntermediateCodeCorruptedError,
+                       IntermediateCodeLimitationError, PrefixError)
 from linkedtypes import resource, triple, graph
 
 byte_ast_dispatch = dict()
@@ -1347,7 +1348,7 @@ class NumberNode(ConstantNode):
             if val == 0:
                 break
         if not potential_prefix:
-            raise ValueError(
+            raise IntermediateCodeLimitationError(
                 'Integer byte transformation failed due to the size of %d. It must be lower than 2^255.' % self.value)
         prefix = potential_prefix.pop()
         raw_int_queue.append(prefix)
@@ -1529,7 +1530,7 @@ class ResourceNode(ASTNode):
         if self.prefix_name is not None:
             pref = environment.get_prefix(self.prefix_name)
             if pref is None:
-                raise ValueError('Prefix %s was not declared.' % self.prefix_name)
+                raise PrefixError('Prefix %s was not declared.' % self.prefix_name)
         return ASTExecutionResult(ASTExecutionResultType.value_, resource(pref + self.iri))
 
     def __repr__(self):
