@@ -229,8 +229,12 @@ class Environment(object):
 
 class GlobalEnvironment(Environment):
     internal_functions = {
+        'enumerate': enumerate,
         'print': print,
         'len': len,
+        'min': min,
+        'max': max,
+        'range': range,
         # Collections
         'list': list,
         'tuple': tuple,
