@@ -224,7 +224,7 @@ class Environment(object):
         return self._prefix_table[name] if name in self._prefix_table else None
 
     def __repr__(self):
-        return 'Environment {Variable-Table: %s}' % self._variable_table
+        return 'Environment {Variable-Table: %s, Prefix-Table: %s}' % (self._variable_table, self._prefix_table)
 
 
 class GlobalEnvironment(Environment):
