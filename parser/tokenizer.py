@@ -41,7 +41,7 @@ class Tokenizer:
     newline = r'\n+'
     # Names
     name = r'[a-zA-Z_]\w*'
-    iri = concat(r'<(?P<prefix_name>(', name, ')(?P<prefix_ind>:))?(?P<iri_value>[^<>"{}\s|^`\\\\]*)>')
+    iri = concat(r'<((?P<prefix_name>(', name, '))?(?P<prefix_ind>:))?(?P<iri_value>[^<>"{}\s|^`\\\\]*)>')
     # Number formats
     binnumber = r'0[bB][01]*'
     hexnumber = r'0[xX][\da-fA-F]*[lL]?'
