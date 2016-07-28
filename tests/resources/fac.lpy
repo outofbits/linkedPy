@@ -1,0 +1,12 @@
+def fac(n):
+    r = 1
+    while n > 1:
+        r *= n
+        n -= 1
+    return r
+
+if __name__ == '__main__':
+    n = 1
+    while n <= 100:
+        print(fac(n))
+        n += 1
