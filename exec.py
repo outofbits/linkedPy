@@ -58,4 +58,5 @@ if __name__ == '__main__':
         logging.basicConfig(level=logging.DEBUG)
     # Path argument
     if args.path:
+        logging.basicConfig(level=logging.FATAL)
         execute_program_file(args.path)
