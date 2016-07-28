@@ -86,7 +86,6 @@ class ASTNode(object):
             return ProgramPeephole(program_container=program_container, start_line_no=single_line_no,
                                    end_line_no=single_line_no)
         else:
-            print(next_b, next_b == cls.single_line_peephole, fd.read(-1))
             fd.seek(-cls.peephole_bytes_length, 1)
             next_b = fd.read(constant_pool.identifier_length)
             start_line_no = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
@@ -311,23 +310,24 @@ class FunctionNode(ASTNode):
         trunk = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         # Parameter list
         next_b = fd.read(cls.identifier_length)
-        if not next_b or next_b == cls.byte_separator:
+        if next_b == cls.byte_separator:
             return FunctionNode(func_name=function_name, trunk=trunk, peephole=peephole)
         elif next_b not in byte_ast_dispatch:
+            print(next_b, trunk)
             raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         else:
             parameter_list = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
-            return FunctionNode(func_name=function_name, trunk=trunk,
-                                parameter_list=parameter_list, peephole=peephole)
+            return FunctionNode(func_name=function_name, trunk=trunk, parameter_list=parameter_list, peephole=peephole)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         self.environment = environment
         total_parameters = dict()
         default_parameters = dict()
-        for index, parameter_node in enumerate(self.parameter_list.execute(environment, program_stack).value):
-            total_parameters[index] = parameter_node.parameter_name
-            if parameter_node.default_expression is not None:
-                default_parameters[parameter_node.parameter_name] = parameter_node.default_expression
+        if self.parameter_list is not None:
+            for index, parameter_node in enumerate(self.parameter_list.execute(environment, program_stack).value):
+                total_parameters[index] = parameter_node.parameter_name
+                if parameter_node.default_expression is not None:
+                    default_parameters[parameter_node.parameter_name] = parameter_node.default_expression
         environment.insert_variable(name=self.function_name, type=Function,
                                     value=Function(name=self.function_name, ast_node=self.trunk,
                                                    environment=environment,
@@ -374,11 +374,10 @@ class ParameterNode(ASTNode):
 
     @classmethod
     def construct_from_cache(cls, fd, constant_pool, program_container) -> ASTNode:
+
         peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
-        # Parameter name
-        length = constant_pool.constant_index_size(next_b)
-        parameter_name = constant_pool.get(fd.read(length))
+        parameter_name = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
         next_b = fd.read(cls.identifier_length)
         if next_b == cls.byte_separator:
             return ParameterNode(parameter_name=parameter_name, peephole=peephole)
@@ -413,7 +412,6 @@ class ParameterListNode(ASTNode):
 
     def cache(self, constant_pool) -> bytearray:
         parameter_list_bytes = bytearray(self.identifier)
-        #        parameter_list_bytes.extend(self.cache_peephole(constant_pool))
         for child in self.children:
             parameter_list_bytes.extend(child.cache(constant_pool))
         parameter_list_bytes.extend(self.byte_separator)
@@ -421,15 +419,15 @@ class ParameterListNode(ASTNode):
 
     @classmethod
     def construct_from_cache(cls, fd, constant_pool, program_container):
-        #        peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
+        parameter_list = ParameterListNode()
         next_b = fd.read(cls.identifier_length)
-        node = ParameterListNode()  # peephole=peephole)
         while next_b != cls.byte_separator:
             if next_b not in byte_ast_dispatch:
                 raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
-            node.insert_parameter(byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container))
+            parameter_list.insert_parameter(
+                byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container))
             next_b = fd.read(cls.identifier_length)
-        return node
+        return parameter_list
 
 
 byte_ast_dispatch[ParameterListNode.identifier] = ParameterListNode
@@ -611,8 +609,8 @@ class FunctionCallNode(ASTNode):
         function_call_bytes = bytearray(self.identifier)
         function_call_bytes.extend(self.cache_peephole(constant_pool))
         function_call_bytes.extend(self.left_side_expression.cache(constant_pool))
-        if self.argument_list is not None:
-            function_call_bytes.extend(self.argument_list.cache(constant_pool))
+        function_call_bytes.extend(
+            self.byte_separator if self.argument_list is None else self.argument_list.cache(constant_pool))
         return function_call_bytes
 
     @classmethod
@@ -1474,8 +1472,8 @@ class PrefixNode(ASTNode):
     def cache(self, constant_pool) -> bytearray:
         prefix_bytes = bytearray(self.identifier)
         prefix_bytes.extend(self.cache_peephole(constant_pool))
-        prefix_bytes.extend(constant_pool.add(self.name))
-        prefix_bytes.extend(constant_pool.add(self.iri))
+        prefix_bytes.extend(constant_pool.add(StringNode(self.name)))
+        prefix_bytes.extend(constant_pool.add(StringNode(self.iri)))
         return prefix_bytes
 
     @classmethod
@@ -1510,27 +1508,30 @@ class ResourceNode(ASTNode):
     def cache(self, constant_pool) -> bytearray:
         resource_bytes = bytearray(self.identifier)
         resource_bytes.extend(self.cache_peephole(constant_pool))
-        resource_bytes.extend(constant_pool.add(self.iri))
-        resource_bytes.extend(self.byte_separator if self.iri is None else constant_pool.add(self.prefix_name))
+        resource_bytes.extend(constant_pool.add(StringNode(self.iri)))
+        resource_bytes.extend(
+            self.byte_separator if self.prefix_name is None else constant_pool.add(StringNode(self.prefix_name)))
         return resource_bytes
 
     @classmethod
     def construct_from_cache(cls, fd, constant_pool, program_container):
         peephole = cls.construct_peephole_from_cache(fd, constant_pool, program_container)
-        next_b = fd.read(cls.identifier)
+        next_b = fd.read(cls.identifier_length)
         iri = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
         if next_b == cls.byte_separator:
             return ResourceNode(iri=iri)
-        next_b = fd.read(cls.identifier)
-        prefix_name = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
-        return ResourceNode(iri=iri, prefix_name=prefix_name, peephole=peephole)
+        next_b = fd.read(cls.identifier_length)
+        if next_b == cls.byte_separator:
+            return ResourceNode(iri=iri, peephole=peephole)
+        else:
+            prefix_name = constant_pool.get(fd.read(constant_pool.constant_index_size(next_b)))
+            return ResourceNode(iri=iri, prefix_name=prefix_name, peephole=peephole)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         pref = ''
         if self.prefix_name is not None:
-            pref = environment.get_prefix(self.prefix_name)
-            if pref is None:
-                raise PrefixError('Prefix %s was not declared.' % self.prefix_name)
+            pref_table = environment.get_prefix(self.prefix_name)
+            pref = pref_table if pref_table is not None else self.prefix_name + ':'
         return ASTExecutionResult(ASTExecutionResultType.value_, resource(pref + self.iri))
 
     def __repr__(self):
@@ -1573,22 +1574,23 @@ class TripleNode(ASTNode):
     @classmethod
     def construct_from_cache(cls, fd, constant_pool, program_container):
         next_b = fd.read(cls.identifier_length)
-        if next_b is not byte_ast_dispatch:
+        if next_b not in byte_ast_dispatch:
             raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         subject = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         next_b = fd.read(cls.identifier_length)
-        if next_b is not byte_ast_dispatch:
+        if next_b not in byte_ast_dispatch:
             raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         predicate = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
-        if next_b is not byte_ast_dispatch:
+        next_b = fd.read(cls.identifier_length)
+        if next_b not in byte_ast_dispatch:
             raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
         object = byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container)
         return TripleNode(subject=subject, predicate=predicate, object=object)
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
-        subj = self.subject.execute(environment).value
-        pred = self.predicate.execute(environment).value
-        obj = self.object.execute(environment).value
+        subj = self.subject.execute(environment, program_stack).value
+        pred = self.predicate.execute(environment, program_stack).value
+        obj = self.object.execute(environment, program_stack).value
         return ASTExecutionResult(ASTExecutionResultType.value_, triple((subj, pred, obj)))
 
     def __repr__(self):
@@ -1625,7 +1627,7 @@ class AtomListNode(ASTNode):
         next_b = fd.read(cls.identifier_length)
         atom_list_node = AtomListNode()
         while next_b != cls.byte_separator:
-            if next_b is not byte_ast_dispatch:
+            if next_b not in byte_ast_dispatch:
                 raise IntermediateCodeCorruptedError('Byte-Code is corrupted at position %d.' % fd.tell())
             atom_list_node.append_atom_node(
                 byte_ast_dispatch[next_b].construct_from_cache(fd, constant_pool, program_container))
@@ -1635,7 +1637,7 @@ class AtomListNode(ASTNode):
     def execute(self, environment: Environment, program_stack: ProgramStack):
         value_list = list()
         for atom_node in self.children:
-            value_list.append(atom_node.execute(environment).value)
+            value_list.append(atom_node.execute(environment, program_stack).value)
         return ASTExecutionResult(ASTExecutionResultType.value_, value_list)
 
 
@@ -1673,8 +1675,8 @@ class GraphNode(ASTNode):
 
     def execute(self, environment: Environment, program_stack: ProgramStack):
         return ASTExecutionResult(ASTExecutionResultType.value_,
-                                  graph(self.construction_node.execute(
-                                      environment).value) if self.construction_node is not None else graph())
+                                  graph(self.construction_node.execute(environment, program_stack).value)
+                                  if self.construction_node is not None else graph())
 
 
 byte_ast_dispatch[GraphNode.identifier] = GraphNode
@@ -1713,8 +1715,8 @@ class ListNode(ASTNode):
     def execute(self, environment: Environment, program_stack: ProgramStack):
         if self.list_construction_node is None:
             return ASTExecutionResult(ASTExecutionResultType.value_, list())
-        return ASTExecutionResult(ASTExecutionResultType.value_,
-                                  self.list_construction_node.execute(environment, program_stack).value)
+        return ASTExecutionResult(ASTExecutionResultType.value_, self.list_construction_node.execute(environment,
+                                                                                                     program_stack).value)
 
 
 byte_ast_dispatch[ListNode.identifier] = ListNode
