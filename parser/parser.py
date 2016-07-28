@@ -17,7 +17,7 @@ class Parser:
     start = 'program'
 
     def __init__(self, program_container: ProgramContainer):
-        self.parser = yacc.yacc(module=self, optimize=0, debug=True)
+        self.parser = yacc.yacc(module=self, optimize=1, debug=False)
         self.program_container = program_container
         self.syntax_error_list = list()
 
@@ -251,13 +251,13 @@ class Parser:
 
     def p_prefix_statement(self, p):
         """
-         prefix_statement : '@' base IRI '.'
+         prefix_statement : '@' base ':' IRI '.'
                           | '@' prefix NAME ':' IRI '.'
         """
         if len(p) == 6:
-            p[0] = PrefixNode(name='base', iri=p[3][2], peephole=self._create_peephole(p.lineno(1), p.lineno(5)))
+            p[0] = PrefixNode(name='base', iri=''.join(p[4]), peephole=self._create_peephole(p.lineno(1), p.lineno(5)))
         else:
-            p[0] = PrefixNode(name=p[3], iri=p[5][2], peephole=self._create_peephole(p.lineno(1), p.lineno(6)))
+            p[0] = PrefixNode(name=p[3], iri=''.join(p[5]), peephole=self._create_peephole(p.lineno(1), p.lineno(6)))
 
     # ## Suite
 
@@ -266,7 +266,7 @@ class Parser:
         suite : simple_statement NEWLINE
               | NEWLINE INDENT statement_list DEDENT
         """
-        if len(p) == 2:
+        if len(p) == 3:
             p[0] = p[1]
         else:
             p[0] = p[3]
@@ -517,8 +517,8 @@ class Parser:
         """
          resource : IRI
         """
-        if p[1][1] is not None:
-            p[0] = ResourceNode(iri=p[1][2], prefix_name='base' if p[1][0] is None else p[1][0],
+        if p[1][1]:
+            p[0] = ResourceNode(iri=p[1][2], prefix_name=('base' if p[1][0] is None else p[1][0]),
                                 peephole=self._create_peephole(p.lineno(1), p.lineno(1)))
         else:
             p[0] = ResourceNode(iri=p[1][2], peephole=self._create_peephole(p.lineno(1), p.lineno(1)))
