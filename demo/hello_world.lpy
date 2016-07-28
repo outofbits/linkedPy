@@ -1,0 +1,7 @@
+def hello_world():
+	print('Hello World !')
+
+def execute(function):
+	function()
+
+execute(hello_world)

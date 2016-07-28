@@ -1,0 +1,80 @@
+# Computes the levenshtein distance to link entities that live in the same street of gustav.
+# For each entity that live in the same street a new triple with the predicate <foaf:nearBy>.
+
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix vcard: <http://www.w3.org/2006/vcard/ns#> .
+@base : <http://example.com/> .
+
+gustav_db = {
+	(<:GustavGans>, <foaf:familyName>, "Gans"), (<:GustavGans>, <foaf:firstName>, "Gustav"),
+	(<:GustavGans>, <vcard:locality>, "Favoritenstraße")
+}
+
+other_db = {
+ 	(<:DonaldDuck>, <foaf:firstName>, "Donald"), (<:DonaldDuck>, <foaf:familyName>, "Duck"),
+ 	(<:DonaldDuck>, <vcard:locality>, "Favoritenstrasssse"), (<:DagobertDuck>, <foaf:firstName>, "Dagobert"),
+ 	(<:DagobertDuck>, <foaf:familyName>, "Duck"), (<:DagobertDuck>, <vcard:locality>, "Karlsplatz"),
+ 	(<:MacMoneysac>, <foaf:firstName>, "Mac"), (<:MacMoneysac>, <foaf:familyName>, "Moneysac"), 
+ 	(<:MacMoneysac>, <vcard:locality>, "S Charlotte Street"), (<:DaisyDuck>, <foaf:familyName>, "Duck"),
+ 	(<:DaisyDuck>, <foaf:givenName>, "Daisy"), (<:DaisyDuck>, <vcard:locality>, "Favortenstraße")
+}
+
+
+def range(n):
+    if n == 0:
+        return []
+    return range(n - 1) + [n]
+
+
+def min(a, b, c):
+    if a <= b:
+        if a <= c:
+            return a
+        else:
+            return c
+    else:
+        if b <= c:
+            return b
+        else:
+            return c
+
+
+def levenshtein(s1, s2):
+    """ Adopted from https://en.wikibooks.org/wiki/Algorithm_Implementation/Strings/Levenshtein_distance#Python """
+    if len(s1) < len(s2):
+        return levenshtein(s2, s1)
+
+    if len(s2) == 0:
+        return len(s1)
+
+    previous_row = range(len(s2) + 1)
+    i = 0
+    while i < len(s1):
+        c1 = s1[i]
+        current_row = [i + 1]
+        j = 0
+        while j < len(s2):
+            c2 = s1[j]
+            current_row += [(min(previous_row[j + 1] + 1, current_row[j] + 1, previous_row[j] + (c1 != c2)))]
+            j += 1
+        previous_row = current_row
+        i += 1
+    return previous_row[-1]
+
+
+def link(algo, link_predicate, source_1, source_2, result_predicate, threshold=2):
+	graph = {}
+	for subject in source_1:
+		predicate_val = source_1[subject][link_predicate][0]
+		for link_subject in source_2:
+			link_predicate_val = source_2[link_subject][link_predicate][0]
+			if algo(predicate_val, link_predicate_val) <= threshold:
+				graph += { (subject, result_predicate, link_subject) }
+	return graph
+
+
+
+g = link(levenshtein, <vcard:locality>, source_1=gustav_db, source_2=other_db, result_predicate=<foaf:nearBy>)
+
+print(g)
+
